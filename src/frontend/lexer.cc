@@ -45,7 +45,7 @@ namespace Word{
         const char *str;
         const TokType type;
     };
-    WordData keywordsData[] = {
+    const WordData keywordsData[] = {
         {"u8", TokType::K_U8},
         {"f32", TokType::K_F32},
         {"f64", TokType::K_F64},
@@ -64,18 +64,16 @@ namespace Word{
         {"else", TokType::K_ELSE},
         {"return", TokType::K_RETURN},
     };
-    WordData poundwordsData[] = {
+    const WordData poundwordsData[] = {
 	    {"import", TokType::P_IMPORT},
     };
     HashmapStr keywords;
     HashmapStr poundwords;
-    const u8 keywordCount = (u32)TokType::K_END - (u32)TokType::K_START - 1;
-    const u8 poundwordCount = (u32)TokType::P_END - (u32)TokType::P_START - 1;
 
-    void init(HashmapStr &map, WordData *data, u8 count) {
+    void init(HashmapStr &map, const WordData *data, const u32 count) {
         map.init(count);
         
-        for(u8 i = 0; i < count; i += 1){
+        for(u32 i = 0; i < count; i += 1){
             map.insertValue({(char*)data[i].str, (u32)strlen(data[i].str) }, (u16)data[i].type);
         };
     };
@@ -137,27 +135,27 @@ struct Lexer {
         tokenTypes.uninit();
         tokenOffsets.uninit();
     };
-    void emitErr(u64 off, char *fmt, ...) {
+    void emitErr(u32 off, char *fmt, ...) {
         if(report::errorOff == MAX_ERRORS) { return; };
         report::Report &rep = report::errors[report::errorOff];
         report::errorOff += 1;
         rep.fileName = fileName;
         rep.off = off;
         rep.fileContent = fileContent;
-        if (fmt != nullptr) { rep.msg = report::reportBuff + report::reportBuffTop; };
+        rep.msg = report::reportBuff + report::reportBuffTop;
         va_list args;
         va_start(args, fmt);
         report::reportBuffTop += vsprintf(report::reportBuff, fmt, args);
         va_end(args);
     };
-    void emitWarning(u64 off, char *fmt, ...) {
+    void emitWarning(u32 off, char *fmt, ...) {
         if (report::errorOff == MAX_ERRORS) { return; };
         report::Report &rep = report::warnings[report::warnOff];
         report::warnOff += 1;
         rep.fileName = fileName;
         rep.off = off;
         rep.fileContent = fileContent;
-        if (fmt != nullptr) { rep.msg = report::reportBuff + report::reportBuffTop; };
+        rep.msg = report::reportBuff + report::reportBuffTop;
         va_list args;
         va_start(args, fmt);
         report::reportBuffTop += vsprintf(report::reportBuff, fmt, args);
@@ -171,9 +169,11 @@ struct Lexer {
             case '#':{
                 x += 1;
                 u32 start = x;
-                while(isAlpha(src[x])){
-                    x += 1;
-                };
+                while(isAlpha(src[x])){x += 1;};
+                if(start == x){
+                    emitErr(start, "Expected an identifier");
+                    return false;
+                }
                 u32 type;
                 if(Word::poundwords.getValue({src+start, x-start}, &type) == false){
                     emitErr(start, "Unkown poundword");
@@ -225,7 +225,7 @@ struct Lexer {
             } break;
             default: {
             if (isAlpha(src[x]) || src[x] == '_') {
-                u64 start = x;
+                u32 start = x;
                 x += 1;
                 while (isAlpha(src[x]) || src[x] == '_' || isNum(src[x])) { x += 1; };
                 u32 type;
@@ -236,7 +236,7 @@ struct Lexer {
                 offset.len = (u16)(x-start);
                 tokenOffsets.push(offset);
             } else if (isNum(src[x])) {
-                u64 start = x;
+                u32 start = x;
                 TokType numType = TokType::INTEGER;
             CHECK_NUM_DEC:
                 x += 1;
@@ -294,7 +294,7 @@ struct Lexer {
                 } else if (src[x] == '/' && src[x+1] == '*') {
 #if(SIMD)
                 s8 level = 1;
-                u64 beg = x;
+                u32 beg = x;
                 x += 3;
                 while (level != 0) {
                     __m128i tocmp = _mm_set1_epi8('/');
@@ -355,7 +355,7 @@ struct Lexer {
                 };
 #else
                 u8 level = 1;
-                u64 beg = x;
+                u32 beg = x;
                 x += 3;
                 while (level != 0) {
                     switch (src[x]) {
@@ -395,7 +395,7 @@ struct Lexer {
         };
         LEXER_EMIT_END_OF_FILE:
         tokenTypes.push(TokType::END_OF_FILE);
-        tokenOffsets.push( { x, 0 });
+        tokenOffsets.push({ x, 0 });
         return true;
     };
 };
@@ -403,38 +403,36 @@ struct Lexer {
 #if(DBG)
 namespace dbg {
     void dumpLexerTokens(Lexer &lexer) {
-        printf("\n[LEXER_TOKENS]");
         for (u32 x = 0; x < lexer.tokenTypes.count; x += 1) {
-            printf("\n[TOKEN]\n");
             u32 line = 1;
             u32 off = 1;
             report::getLineAndOff(lexer.fileContent, lexer.tokenOffsets[x].off, line, off);
-            printf("line: %d off: %d\n", line, off);
+            printf("\n-----[TOKEN @ line: %d off: %d]-----\n", line, off);
             switch (lexer.tokenTypes[x]) {
             case TokType::DOUBLE_QUOTES: {
-            printf("double_quotes\n%.*s", lexer.tokenOffsets[x].len, lexer.fileContent + lexer.tokenOffsets[x].off);
+            printf("double_quotes: %.*s", lexer.tokenOffsets[x].len, lexer.fileContent + lexer.tokenOffsets[x].off);
             } break;
             case TokType::SINGLE_QUOTES: {
-            printf("single_quotes\n%.*s", lexer.tokenOffsets[x].len, lexer.fileContent + lexer.tokenOffsets[x].off);
+            printf("single_quotes: %.*s", lexer.tokenOffsets[x].len, lexer.fileContent + lexer.tokenOffsets[x].off);
             } break;
             case TokType::IDENTIFIER: {
-            printf("identifier\n%.*s", lexer.tokenOffsets[x].len, lexer.fileContent + lexer.tokenOffsets[x].off);
+            printf("identifier: %.*s", lexer.tokenOffsets[x].len, lexer.fileContent + lexer.tokenOffsets[x].off);
             } break;
             case TokType::INTEGER: {
-            printf("integer\n%.*s", lexer.tokenOffsets[x].len, lexer.fileContent + lexer.tokenOffsets[x].off);
+            printf("integer: %.*s", lexer.tokenOffsets[x].len, lexer.fileContent + lexer.tokenOffsets[x].off);
             } break;
             case TokType::DECIMAL: {
-            printf("decimal\n%.*s", lexer.tokenOffsets[x].len, lexer.fileContent + lexer.tokenOffsets[x].off);
+            printf("decimal: %.*s", lexer.tokenOffsets[x].len, lexer.fileContent + lexer.tokenOffsets[x].off);
             } break;
             case TokType::END_OF_FILE: printf("end_of_file"); break;
             case (TokType)'\n': printf("new_line"); break;
             default:
             if(isKeyword(lexer.tokenTypes[x])){
-                printf("keyword\n%.*s", lexer.tokenOffsets[x].len, lexer.fileContent + lexer.tokenOffsets[x].off);
+                printf("keyword: %.*s", lexer.tokenOffsets[x].len, lexer.fileContent + lexer.tokenOffsets[x].off);
             }else if(isPoundword(lexer.tokenTypes[x])){
-                printf("poundword\n%.*s", lexer.tokenOffsets[x].len, lexer.fileContent + lexer.tokenOffsets[x].off);
+                printf("poundword: %.*s", lexer.tokenOffsets[x].len, lexer.fileContent + lexer.tokenOffsets[x].off);
             }else{
-                printf("%c", lexer.tokenTypes[x]);
+                printf("%c", (char)lexer.tokenTypes[x]);
             };
             break;
             };

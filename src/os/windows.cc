@@ -1,7 +1,7 @@
 #include <windows.h>
 
 namespace os{
-    char *getFileFullName(char *filePath, char *buff) {
+    u32 getFileFullName(char *filePath, char *buff) {
         return GetFullPathNameA(filePath, 1024, buff, NULL);
     };
     

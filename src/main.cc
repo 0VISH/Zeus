@@ -14,8 +14,8 @@ s32 main(){
 #if(DBG)
     DEFER(printf("Done :)\n"));
 #endif
-    Word::init(Word::keywords, Word::keywordsData, Word::keywordCount);
-    Word::init(Word::poundwords, Word::poundwordsData, Word::poundwordCount);
+    Word::init(Word::keywords, Word::keywordsData, ARRAY_LENGTH(Word::keywordsData));
+    Word::init(Word::poundwords, Word::poundwordsData, ARRAY_LENGTH(Word::poundwordsData));
     DEFER({
         Word::uninit(Word::keywords);
         Word::uninit(Word::poundwords);
