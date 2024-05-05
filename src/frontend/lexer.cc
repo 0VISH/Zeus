@@ -193,6 +193,7 @@ struct Lexer {
                     x += 1;
                     if(src[x] == '\0' || src[x] == '\n'){
                         emitErr(start, "Expected ending single quotes");
+                        return false;
                     };
                 };
                 if(src[x-1] == '\\'){goto SINGLE_QUOTE_FIND_END;};
@@ -201,6 +202,7 @@ struct Lexer {
                 offset.off = start;
                 offset.len = (u16)(x-start);
                 tokenOffsets.push(offset);
+                x++;
             } break;
             case '\"':{
                 u32 start = x+1;
@@ -210,6 +212,7 @@ struct Lexer {
                     x += 1;
                     if(src[x] == '\0' || src[x] == '\n'){
                         emitErr(start, "Expected ending double quotes");
+                        return false;
                     };
                 };
                 if(src[x-1] == '\\'){goto DOUBLE_QUOTE_FIND_END;};
@@ -218,6 +221,7 @@ struct Lexer {
                 offset.off = start;
                 offset.len = (u16)(x-start);
                 tokenOffsets.push(offset);
+                x++;
             } break;
             default: {
             if (isAlpha(src[x]) || src[x] == '_') {
@@ -289,7 +293,7 @@ struct Lexer {
                 continue;
                 } else if (src[x] == '/' && src[x+1] == '*') {
 #if(SIMD)
-                u8 level = 1;
+                s8 level = 1;
                 u64 beg = x;
                 x += 3;
                 while (level != 0) {
@@ -319,10 +323,15 @@ struct Lexer {
                     switch (src[x]) {
                     case '\0': {
                         if(level == 0){
-                        CLEAR_BIT(mask, y);
+                            CLEAR_BIT(mask, y);
                         }else{
-                        emitErr(beg, "%d multi line comment%snot terminated", level, (level==1)?" ":"s ");
-                        return false;
+                            if(level < 0){
+                                level *= -1;
+                                emitErr(beg, "%d multi line comment%snot started", level, (level==1)?" ":"s ");
+                            }else{
+                                emitErr(beg, "%d multi line comment%snot terminated", level, (level==1)?" ":"s ");
+                            };
+                            return false;
                         };
                     } break;
                     case '*': {
@@ -351,16 +360,21 @@ struct Lexer {
                 while (level != 0) {
                     switch (src[x]) {
                     case '\0': {
-                    emitErr(beg, "%d multi line comment%snot terminated", level, (level==1)?" ":"s ");
-                    return false;
+                        if(level < 0){
+                            level *= -1;
+                            emitErr(beg, "%d multi line comment%snot started", level, (level==1)?" ":"s ");
+                        }else{
+                            emitErr(beg, "%d multi line comment%snot terminated", level, (level==1)?" ":"s ");
+                        };
+                        return false;
                     } break;
                     case '*': {
-                    x += 1;
-                    if (src[x] == '/') { level -= 1; };
+                        x += 1;
+                        if (src[x] == '/') { level -= 1; };
                     } break;
                     case '/': {
-                    x += 1;
-                    if (src[x] == '*') { level += 1; };
+                        x += 1;
+                        if (src[x] == '*') { level += 1; };
                     } break;
                     };
                     x += 1;
@@ -398,10 +412,10 @@ namespace dbg {
             printf("line: %d off: %d\n", line, off);
             switch (lexer.tokenTypes[x]) {
             case TokType::DOUBLE_QUOTES: {
-            printf("double_quotes\n%.*s", lexer.tokenOffsets[x].len, lexer.fileContent + lexer.tokenOffsets[x].off + 1);
+            printf("double_quotes\n%.*s", lexer.tokenOffsets[x].len, lexer.fileContent + lexer.tokenOffsets[x].off);
             } break;
             case TokType::SINGLE_QUOTES: {
-            printf("single_quotes\n%.*s", lexer.tokenOffsets[x].len, lexer.fileContent + lexer.tokenOffsets[x].off + 1);
+            printf("single_quotes\n%.*s", lexer.tokenOffsets[x].len, lexer.fileContent + lexer.tokenOffsets[x].off);
             } break;
             case TokType::IDENTIFIER: {
             printf("identifier\n%.*s", lexer.tokenOffsets[x].len, lexer.fileContent + lexer.tokenOffsets[x].off);

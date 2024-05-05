@@ -1,11 +1,11 @@
 #!/bin/bash
 
-if [ ! -d "bin" ]; then
-    mkdir bin
+if [ ! -d "bin/lin/" ]; then
+    mkdir bin/lin
 fi
 
-clang++ src/main.cc -o bin/zeus.o
+clang++ src/main.cc --debug -o bin/lin/zeus.o -D LIN=1
 
 if [ $? -eq 0 ]; then
-    ./bin/zeus.o
+    ./bin/lin/zeus.o
 fi

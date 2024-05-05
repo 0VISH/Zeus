@@ -39,20 +39,16 @@ namespace report{
 	    line += __builtin_popcount(mask);
 	    x += 16;
 	}
-		
-	while (mem[offset-off] != '\n') {
-	    off += 1;
-	};
-	return mem + offset-off+1;
+
 #else
 	for (u64 i = 0; i < offset; i += 1) {
 	    if (mem[i] == '\n') { line += 1; };
 	};
+#endif
 	while (mem[offset-off] != '\n') {
 	    off += 1;
 	};
 	return mem + offset-off+1;
-#endif
     };
 
     void flush(u32 offset, Report *reports, void(*setCol)()){

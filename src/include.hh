@@ -8,8 +8,10 @@
 #endif
 #include "basic.hh"
 #include "mem.cc"
-#if(LINUX)
+#if(LIN)
 #include "os/linux.cc"
+#elif(WIN)
+#include "os/windows.cc"
 #endif
 
 #include "ds.cc"
