@@ -22,15 +22,15 @@ typedef double                  f64;
 
 #if(DBG)
 #include <stdio.h>
-void unreachable(char *file, u32 line) {
-    printf("\n[ERROR] unreachable area reached: %s:%d", file, line);
+void unreachable(char *func, char *file, u32 line) {
+    printf("\n%s:%d(%s) unreachable area reached", file, line, func);
 };
-#define UNREACHABLE unreachable(__FILE__, __LINE__)
-void ass(bool x, char *file, u32 line){
+#define UNREACHABLE unreachable(__FUNCTION__, __FILE__, __LINE__)
+void ass(bool x, char *func, char *file, u32 line){
     if(x){return;};
-    printf("\n%s:%d assertion failed\n", file, line);
+    printf("\n%s:%d(%s) assertion failed\n", file, line, func);
 };
-#define ASSERT(expr)   ass(expr, __FILE__, __LINE__)
+#define ASSERT(expr)   ass(expr, __FUNCTION__, __FILE__, __LINE__)
 #else
 #define UNREACHABLE
 #define ASSERT(expr)

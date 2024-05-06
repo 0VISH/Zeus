@@ -6,6 +6,7 @@
 #pragma clang diagnostic ignored "-Wmicrosoft-include"
 #pragma clang diagnostic ignored "-Wmicrosoft-goto"
 #pragma clang diagnostic ignored "-Wswitch"
+#pragma clang diagnostic ignored "-Wint-to-pointer-cast"
 #endif
 
 #include "include.hh"
@@ -25,7 +26,16 @@ s32 main(){
     DEFER(lexer.uninit());
     if(lexer.genTokens()){
         dbg::dumpLexerTokens(lexer);
+        ASTFile file;
+        file.init();
+        DEFER(file.uninit());
+        u32 cursor = 0;
+        if(parseBlock(lexer, file, cursor) == false){
+            report::flushReports();
+        }else{
+            dbg::dumpASTFile(file);
+        };
     }else{
         report::flushReports();
     };
-}
+};

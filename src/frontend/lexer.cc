@@ -136,7 +136,7 @@ struct Lexer {
         tokenOffsets.uninit();
     };
     void emitErr(u32 off, char *fmt, ...) {
-        if(report::errorOff == MAX_ERRORS) { return; };
+        if(report::errorOff == MAX_ERRORS) return;
         report::Report &rep = report::errors[report::errorOff];
         report::errorOff += 1;
         rep.fileName = fileName;
@@ -149,7 +149,7 @@ struct Lexer {
         va_end(args);
     };
     void emitWarning(u32 off, char *fmt, ...) {
-        if (report::errorOff == MAX_ERRORS) { return; };
+        if(report::errorOff == MAX_ERRORS) return;
         report::Report &rep = report::warnings[report::warnOff];
         report::warnOff += 1;
         rep.fileName = fileName;
@@ -169,7 +169,7 @@ struct Lexer {
             case '#':{
                 x += 1;
                 u32 start = x;
-                while(isAlpha(src[x])){x += 1;};
+                while(isAlpha(src[x])) x += 1;
                 if(start == x){
                     emitErr(start, "Expected an identifier");
                     return false;
@@ -196,7 +196,7 @@ struct Lexer {
                         return false;
                     };
                 };
-                if(src[x-1] == '\\'){goto SINGLE_QUOTE_FIND_END;};
+                if(src[x-1] == '\\') goto SINGLE_QUOTE_FIND_END;
                 tokenTypes.push(TokType::SINGLE_QUOTES);
                 TokenOffset offset;
                 offset.off = start;
@@ -215,7 +215,7 @@ struct Lexer {
                         return false;
                     };
                 };
-                if(src[x-1] == '\\'){goto DOUBLE_QUOTE_FIND_END;};
+                if(src[x-1] == '\\') goto DOUBLE_QUOTE_FIND_END;
                 tokenTypes.push(TokType::DOUBLE_QUOTES);
                 TokenOffset offset;
                 offset.off = start;
@@ -227,7 +227,7 @@ struct Lexer {
             if (isAlpha(src[x]) || src[x] == '_') {
                 u32 start = x;
                 x += 1;
-                while (isAlpha(src[x]) || src[x] == '_' || isNum(src[x])) { x += 1; };
+                while (isAlpha(src[x]) || src[x] == '_' || isNum(src[x])) x += 1;
                 u32 type;
                 if(Word::keywords.getValue({src+start, (u32)(x-start)}, &type) != false){ tokenTypes.push((TokType)type);}
                 else{tokenTypes.push(TokType::IDENTIFIER);};
@@ -280,7 +280,7 @@ struct Lexer {
                     return true;
                 };
                 u32 xy = 0;
-                while (IS_BIT(mask, xy) == 0) { xy += 1; };
+                while (IS_BIT(mask, xy) == 0) xy += 1;
                 x += times + xy + 1;
 #else
                 while(src[x] != '\n'){
@@ -292,39 +292,71 @@ struct Lexer {
                 x = eatUnwantedChars(src, x);
                 continue;
                 } else if (src[x] == '/' && src[x+1] == '*') {
+                    u8 level = 1;
+                    u32 beg = x;
+                    x += 3;
 #if(SIMD)
-                s8 level = 1;
-                u32 beg = x;
-                x += 3;
-                while (level != 0) {
-                    __m128i tocmp = _mm_set1_epi8('/');
-                    __m128i chunk = _mm_loadu_si128((const __m128i*)(src+x));
-                    __m128i results =  _mm_cmpeq_epi8(chunk, tocmp);
-                    s32 frontslashMask = _mm_movemask_epi8(results);
-                    tocmp = _mm_set1_epi8('*');
-                    results =  _mm_cmpeq_epi8(chunk, tocmp);
-                    s32 startMask = _mm_movemask_epi8(results);
-                    tocmp = _mm_set1_epi8('\0');
-                    results =  _mm_cmpeq_epi8(chunk, tocmp);
-                    s32 nullbyteMask = _mm_movemask_epi8(results);
-                    s32 mask = frontslashMask | startMask | nullbyteMask;
-                    if (mask == 0){
-                    x += 16;
-                    continue;
-                    };
-                    u32 y = 0;
-                    while (mask != 0) {
-                    while (IS_BIT(mask, y) == 0) {
-                        x += 1;
-                        y += 1;
-                    };
-                    CLEAR_BIT(mask, y);
-                    y += 1;
-                    switch (src[x]) {
-                    case '\0': {
-                        if(level == 0){
+                    while (level != 0) {
+                        __m128i tocmp = _mm_set1_epi8('/');
+                        __m128i chunk = _mm_loadu_si128((const __m128i*)(src+x));
+                        __m128i results =  _mm_cmpeq_epi8(chunk, tocmp);
+                        s32 frontslashMask = _mm_movemask_epi8(results);
+                        tocmp = _mm_set1_epi8('*');
+                        results =  _mm_cmpeq_epi8(chunk, tocmp);
+                        s32 startMask = _mm_movemask_epi8(results);
+                        tocmp = _mm_set1_epi8('\0');
+                        results =  _mm_cmpeq_epi8(chunk, tocmp);
+                        s32 nullbyteMask = _mm_movemask_epi8(results);
+                        s32 mask = frontslashMask | startMask | nullbyteMask;
+                        if (mask == 0){
+                            x += 16;
+                            continue;
+                        };
+                        u32 y = 0;
+                        while (mask != 0) {
+                            while (IS_BIT(mask, y) == 0) {
+                                x += 1;
+                                y += 1;
+                            };
                             CLEAR_BIT(mask, y);
-                        }else{
+                            y += 1;
+                            switch (src[x]) {
+                            case '\0': {
+                                if(level == 0){
+                                    CLEAR_BIT(mask, y);
+                                }else{
+                                    if(level < 0){
+                                        level *= -1;
+                                        emitErr(beg, "%d multi line comment%snot started", level, (level==1)?" ":"s ");
+                                    }else{
+                                        emitErr(beg, "%d multi line comment%snot terminated", level, (level==1)?" ":"s ");
+                                    };
+                                    return false;
+                                };
+                            } break;
+                            case '*': {
+                                x += 1;
+                                if (src[x] == '/') {
+                                level -= 1;
+                                CLEAR_BIT(mask, y);
+                                };
+                            } break;
+                            case '/': {
+                                x += 1;
+                                if (src[x] == '*') {
+                                level += 1;
+                                CLEAR_BIT(mask, y);
+                                };
+                            } break;
+                            };
+                            x += 1;
+                            y += 1;
+                        };
+                    };
+#else
+                    while (level != 0) {
+                        switch (src[x]) {
+                        case '\0': {
                             if(level < 0){
                                 level *= -1;
                                 emitErr(beg, "%d multi line comment%snot started", level, (level==1)?" ":"s ");
@@ -332,53 +364,18 @@ struct Lexer {
                                 emitErr(beg, "%d multi line comment%snot terminated", level, (level==1)?" ":"s ");
                             };
                             return false;
+                        } break;
+                        case '*': {
+                            x += 1;
+                            if (src[x] == '/') { level -= 1; };
+                        } break;
+                        case '/': {
+                            x += 1;
+                            if (src[x] == '*') { level += 1; };
+                        } break;
                         };
-                    } break;
-                    case '*': {
                         x += 1;
-                        if (src[x] == '/') {
-                        level -= 1;
-                        CLEAR_BIT(mask, y);
-                        };
-                    } break;
-                    case '/': {
-                        x += 1;
-                        if (src[x] == '*') {
-                        level += 1;
-                        CLEAR_BIT(mask, y);
-                        };
-                    } break;
                     };
-                    x += 1;
-                    y += 1;
-                    };
-                };
-#else
-                u8 level = 1;
-                u32 beg = x;
-                x += 3;
-                while (level != 0) {
-                    switch (src[x]) {
-                    case '\0': {
-                        if(level < 0){
-                            level *= -1;
-                            emitErr(beg, "%d multi line comment%snot started", level, (level==1)?" ":"s ");
-                        }else{
-                            emitErr(beg, "%d multi line comment%snot terminated", level, (level==1)?" ":"s ");
-                        };
-                        return false;
-                    } break;
-                    case '*': {
-                        x += 1;
-                        if (src[x] == '/') { level -= 1; };
-                    } break;
-                    case '/': {
-                        x += 1;
-                        if (src[x] == '*') { level += 1; };
-                    } break;
-                    };
-                    x += 1;
-                };
 #endif
                 x = eatUnwantedChars(src, x);
                 continue;

@@ -18,3 +18,4 @@
 #include "report.cc"
 
 #include "frontend/lexer.cc"
+#include "frontend/parser.cc"
