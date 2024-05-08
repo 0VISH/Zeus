@@ -30,11 +30,10 @@ s32 main(){
         file.init();
         DEFER(file.uninit());
         u32 cursor = 0;
-        auto *node = genASTExprTree(lexer, file, cursor, getEndOfLineOrFile(lexer.tokenTypes, 0));
-        if(node == nullptr){
+        if(!parseBlock(lexer, file, cursor)){
             report::flushReports();
         }else{
-            dbg::dumpASTNode(node);
+            dbg::dumpASTFile(file, lexer);
         };
     }else{
         report::flushReports();

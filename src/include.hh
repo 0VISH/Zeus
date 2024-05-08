@@ -18,4 +18,5 @@
 #include "report.cc"
 
 #include "frontend/lexer.cc"
+#include "frontend/type.hh"
 #include "frontend/parser.cc"
