@@ -57,7 +57,7 @@ struct String {
     char *mem;
     u32 len;
 
-    char operator[](u32 index) {
+    char operator[](u32 index) const {
 #if(DBG == true)
 	if (index >= len) {
 	    printf("\n[ERROR]: abc(string) failed. mem: %p, len: %d, index = %d\n", mem, len, index);

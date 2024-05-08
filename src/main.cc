@@ -13,7 +13,7 @@
 
 s32 main(){
 #if(DBG)
-    DEFER(printf("Done :)\n"));
+    DEFER(printf("\nDone :)\n"));
 #endif
     Word::init(Word::keywords, Word::keywordsData, ARRAY_LENGTH(Word::keywordsData));
     Word::init(Word::poundwords, Word::poundwordsData, ARRAY_LENGTH(Word::poundwordsData));
@@ -30,10 +30,11 @@ s32 main(){
         file.init();
         DEFER(file.uninit());
         u32 cursor = 0;
-        if(parseBlock(lexer, file, cursor) == false){
+        auto *node = genASTExprTree(lexer, file, cursor, getEndOfLineOrFile(lexer.tokenTypes, 0));
+        if(node == nullptr){
             report::flushReports();
         }else{
-            dbg::dumpASTFile(file);
+            dbg::dumpASTNode(node);
         };
     }else{
         report::flushReports();
