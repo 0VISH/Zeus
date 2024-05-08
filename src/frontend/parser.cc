@@ -8,11 +8,13 @@ enum class ASTType{
     INTEGER,
     DECIMAL,
 
-    B_ADD,   //binary operators start
+    B_START,  //binary operators start
+    B_ADD,
     B_SUB,
     B_MUL,
     B_DIV,
-    B_MOD,   //binary operators end
+    B_MOD,
+    B_END,    //binary operators end
 };
 
 struct ASTBase{
@@ -121,6 +123,16 @@ String makeStringFromTokOff(u32 x, Lexer &lexer){
     str.mem = lexer.fileContent + off.off;
     return str;
 };
+u32 getOperatorPriority(ASTType op){
+    switch(op){
+        case ASTType::B_ADD:
+        case ASTType::B_SUB: return 1;
+        case ASTType::B_MUL:
+        case ASTType::B_DIV:
+        case ASTType::B_MOD: return 2;
+    };
+    return 0;
+};
 ASTBase* _genASTExprTree(Lexer &lexer, ASTFile &file, u32 &xArg, u32 end){
     BRING_TOKENS_TO_SCOPE;
     u32 x = xArg;
@@ -168,6 +180,18 @@ ASTBase* _genASTExprTree(Lexer &lexer, ASTFile &file, u32 &xArg, u32 end){
     if(rhs == nullptr){return nullptr;};
     binOp->lhs = lhs;
     binOp->rhs = rhs;
+    if(rhs->type > ASTType::B_START && rhs->type < ASTType::B_END){
+        u32 rhsPriority = getOperatorPriority(rhs->type);
+        u32 curPriority = getOperatorPriority(binOp->type);
+        ASTBinOp *rhsBin = (ASTBinOp*)rhs;
+        //TODO: check bracket flag
+        if(rhsPriority < curPriority){
+            //fix tree branches(https://youtu.be/MnctEW1oL-E?si=6NnDgPSeX0F-aFD_&t=3696)
+            binOp->rhs = rhsBin->lhs;
+            rhsBin->lhs = binOp;
+            return rhsBin;
+        };
+    };
     return binOp;
 };
 ASTBase* genASTExprTree(Lexer &lexer, ASTFile &file, u32 &x, u32 end){
