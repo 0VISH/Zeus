@@ -30,7 +30,7 @@ s32 main(){
         file.init();
         DEFER(file.uninit());
         u32 cursor = 0;
-        if(!parseBlock(lexer, file, cursor)){
+        if(!parseFile(lexer, file)){
             report::flushReports();
         }else{
             dbg::dumpASTFile(file, lexer);

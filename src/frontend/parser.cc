@@ -8,6 +8,7 @@ enum class ASTType{
     INTEGER,
     DECIMAL,
     TYPE,
+    IF,
 
     B_START,  //binary operators start
     B_ADD,
@@ -48,6 +49,13 @@ struct ASTNum : ASTBase{
         s64 integer;
         f64 decimal;
     };
+};
+struct ASTIf : ASTBase{
+    ASTBase *expr;
+    ASTBase **ifBody;
+    ASTBase **elseBody;
+    u32 ifBodyCount;
+    u32 elseBodyCount;
 };
 
 struct ASTFile{
@@ -264,12 +272,89 @@ inline u32 getEndOfLineOrFile(DynamicArray<TokType> &types, u32 x){
     while(!isEndOfLineOrFile(types, x)) x++;
     return x;
 }
-bool parseBlock(Lexer &lexer, ASTFile &file, u32 &xArg){
+inline u32 getNewLineOrBracket(DynamicArray<TokType> &types, u32 x){
+    while(!isEndOfLineOrFile(types, x) || types[x] == (TokType)'{') x++;
+    return x;
+};
+inline u32 eatNewLine(DynamicArray<TokType> &types, u32 x){
+    while(types[x] == (TokType)'\n') x++;
+    return x;
+};
+bool parseBlock(Lexer &lexer, ASTFile &file, DynamicArray<ASTBase*> &table, u32 &xArg);
+ASTBase** parseBody(Lexer &lexer, ASTFile &file, DynamicArray<ASTBase*> &table, u32 &xArg, u32 &count){
     BRING_TOKENS_TO_SCOPE;
     u32 x = xArg;
     DEFER(xArg = x);
+    if(tokTypes[x] == (TokType)'{'){
+        u32 start = x;
+        x++;
+        x = eatNewLine(lexer.tokenTypes, x);
+        DynamicArray<ASTBase*> bodyTable;
+        bodyTable.init();
+        while(tokTypes[x] != (TokType)'}'){
+            if(!parseBlock(lexer, file, bodyTable, x)){
+                bodyTable.uninit();
+                return nullptr;
+            };
+            if(tokTypes[x] == TokType::END_OF_FILE){
+                lexer.emitErr(tokOffs[start].off, "Expected closing '}'");
+                return nullptr;
+            };
+        };
+        u32 size = sizeof(ASTBase*) * bodyTable.count;
+        ASTBase **bodyNodes = (ASTBase**)file.balloc(size);
+        memcpy(bodyNodes, bodyTable.mem, size);
+        bodyTable.uninit();
+        x++;
+        count = bodyTable.count;
+        return bodyNodes;
+    }else if(tokTypes[x] == (TokType)':'){
+        x++;
+        DynamicArray<ASTBase*> bodyTable;
+        bodyTable.init(1);
+        if(!parseBlock(lexer, file, bodyTable, x)) return nullptr;
+        ASTBase **bodyNode = (ASTBase**)file.balloc(sizeof(ASTBase*));
+        *bodyNode = bodyTable[0];
+        bodyTable.uninit();
+        count = 1;
+        return bodyNode;
+    }else{
+        lexer.emitErr(tokOffs[x].off, "Expected '{' or ':'");
+        return nullptr;
+    };
+};
+bool parseBlock(Lexer &lexer, ASTFile &file, DynamicArray<ASTBase*> &table, u32 &xArg){
+    BRING_TOKENS_TO_SCOPE;
+    u32 x = xArg;
+    DEFER({
+        x = eatNewLine(tokTypes, x);
+        xArg = x;
+    });
     u32 start = x;
     switch(tokTypes[x]){
+        case TokType::K_IF:{
+            x++;
+            u32 end = getNewLineOrBracket(lexer.tokenTypes, x) - 1;
+            ASTBase *expr = genASTExprTree(lexer, file, x, end);
+            if(!expr) return false;
+            ASTIf *If = (ASTIf*)file.newNode(sizeof(ASTIf), ASTType::IF);
+            If->expr = expr;
+            x = eatNewLine(lexer.tokenTypes, x);
+            u32 count;
+            ASTBase **bodyNodes = parseBody(lexer, file, table, x, count);
+            if(!bodyNodes) return false;
+            If->ifBody = bodyNodes;
+            If->ifBodyCount = count;
+            if(tokTypes[x] == TokType::K_ELSE){
+                //TODO: support else if
+                x++;
+                bodyNodes = parseBody(lexer, file, table, x, count);
+                if(!bodyNodes) return false;
+                If->elseBody = bodyNodes;
+                If->elseBodyCount = count;
+            }else If->elseBodyCount = 0;
+            table.push(If);
+        }break;
         case TokType::IDENTIFIER:
             x++;
             switch(tokTypes[x]){
@@ -316,9 +401,22 @@ bool parseBlock(Lexer &lexer, ASTFile &file, u32 &xArg){
                     ASTBase *expr = genASTExprTree(lexer, file, x, getEndOfLineOrFile(lexer.tokenTypes, x));
                     if(!expr) return false;
                     assdecl->rhs = expr;
-                    file.nodes.push(assdecl);
+                    table.push(assdecl);
                 }break;
-            };
+            }break;
+        default:{
+            ASTBase *expr = genASTExprTree(lexer, file, x, getEndOfLineOrFile(tokTypes, x));
+            if(!expr) return false;
+            table.push(expr);
+        };
+    };
+    return true;
+};
+bool parseFile(Lexer &lexer, ASTFile &file){
+    BRING_TOKENS_TO_SCOPE;
+    u32 cursor = eatNewLine(tokTypes, 0);
+    while(tokTypes[cursor] != TokType::END_OF_FILE){
+        if(!parseBlock(lexer, file, file.nodes, cursor)) return false;
     };
     return true;
 };
@@ -338,11 +436,30 @@ namespace dbg{
             printf("%.*s ", str.len, str.mem);
         };
     };
+    void dumpASTNode(ASTBase *node, Lexer &lexer, u8 padding);
+    void dumpASTBody(ASTBase **bodyNodes, u32 count, Lexer &lexer, u8 padding){
+        for(u32 x=0; x<count; x++){
+            ASTBase *node = bodyNodes[x];
+            dumpASTNode(node, lexer, padding);
+        };
+    };
     void dumpASTNode(ASTBase *node, Lexer &lexer, u8 padding){
         PLOG("[NODE]");
         PLOG("type: ");
         bool hasNotDumped = true;
         switch(node->type){
+            case ASTType::IF:{
+                ASTIf *If = (ASTIf*)node;
+                printf("if");
+                PLOG("expr:");
+                dumpASTNode(If->expr, lexer, padding+1);
+                PLOG("if_body(%d):", If->ifBodyCount);
+                dumpASTBody(If->ifBody, If->ifBodyCount, lexer, padding+1);
+                if(If->elseBodyCount != 0){
+                    PLOG("else_body(%d):", If->elseBodyCount);
+                    dumpASTBody(If->elseBody, If->elseBodyCount, lexer, padding+1);
+                };
+            }break;
             case ASTType::ASSIGNMENT:{
                 ASTAssDecl *assdecl = (ASTAssDecl*)node;
                 printf("assignment");
