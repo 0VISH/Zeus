@@ -272,8 +272,8 @@ inline u32 getEndOfLineOrFile(DynamicArray<TokType> &types, u32 x){
     while(!isEndOfLineOrFile(types, x)) x++;
     return x;
 }
-inline u32 getNewLineOrBracket(DynamicArray<TokType> &types, u32 x){
-    while(!isEndOfLineOrFile(types, x) || types[x] == (TokType)'{') x++;
+inline u32 getNewLineOrBracketOrCollon(DynamicArray<TokType> &types, u32 x){
+    while(!isEndOfLineOrFile(types, x) && types[x] != (TokType)'{' && types[x] != (TokType)':') x++;
     return x;
 };
 inline u32 eatNewLine(DynamicArray<TokType> &types, u32 x){
@@ -334,7 +334,7 @@ bool parseBlock(Lexer &lexer, ASTFile &file, DynamicArray<ASTBase*> &table, u32 
     switch(tokTypes[x]){
         case TokType::K_IF:{
             x++;
-            u32 end = getNewLineOrBracket(lexer.tokenTypes, x) - 1;
+            u32 end = getNewLineOrBracketOrCollon(lexer.tokenTypes, x);
             ASTBase *expr = genASTExprTree(lexer, file, x, end);
             if(!expr) return false;
             ASTIf *If = (ASTIf*)file.newNode(sizeof(ASTIf), ASTType::IF);
@@ -346,12 +346,26 @@ bool parseBlock(Lexer &lexer, ASTFile &file, DynamicArray<ASTBase*> &table, u32 
             If->ifBody = bodyNodes;
             If->ifBodyCount = count;
             if(tokTypes[x] == TokType::K_ELSE){
-                //TODO: support else if
                 x++;
-                bodyNodes = parseBody(lexer, file, table, x, count);
-                if(!bodyNodes) return false;
-                If->elseBody = bodyNodes;
-                If->elseBodyCount = count;
+                if(tokTypes[x] == TokType::K_IF){
+                    //else if
+                    DynamicArray<ASTBase*> elseIfBody;
+                    elseIfBody.init();
+                    if(!parseBlock(lexer, file, elseIfBody, x)){
+                        elseIfBody.uninit();
+                        return false;  
+                    };
+                    ASTBase **elseIfNode = (ASTBase**)file.balloc(sizeof(ASTBase*));
+                    *elseIfNode = elseIfBody[0];
+                    elseIfBody.uninit();
+                    If->elseBody = elseIfNode;
+                    If->elseBodyCount = 1;
+                }else{
+                    bodyNodes = parseBody(lexer, file, table, x, count);
+                    if(!bodyNodes) return false;
+                    If->elseBody = bodyNodes;
+                    If->elseBodyCount = count;
+                };
             }else If->elseBodyCount = 0;
             table.push(If);
         }break;
@@ -404,6 +418,10 @@ bool parseBlock(Lexer &lexer, ASTFile &file, DynamicArray<ASTBase*> &table, u32 
                     table.push(assdecl);
                 }break;
             }break;
+        case TokType::K_ELSE:{
+            lexer.emitErr(tokOffs[x].off, "Expected 'if' before 'else'");
+            return false;
+        }break;
         default:{
             ASTBase *expr = genASTExprTree(lexer, file, x, getEndOfLineOrFile(tokTypes, x));
             if(!expr) return false;
