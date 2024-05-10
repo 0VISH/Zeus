@@ -255,8 +255,20 @@ struct Lexer {
                 tokenOffsets.push(offset);
                 tokenTypes.push(numType);
             } else {
+                TokenOffset offset;
+                offset.off = x;
                 TokType type = (TokType)src[x];
-                if (src[x] == '/' && src[x + 1] == '/') {
+                if(src[x] == '.'){
+                    if(src[x+1] == '.'){
+                        if(src[x+2] == '.'){
+                            type = TokType::TDOT;
+                            x += 2;
+                        }else{
+                            type = TokType::DDOT;
+                            x++;
+                        };
+                    };
+                }else if (src[x] == '/' && src[x + 1] == '/') {
 #if(SIMD)
                 x += 2;
                 //Since the src buffer is padded we do not have to worry
@@ -380,8 +392,6 @@ struct Lexer {
                 x = eatUnwantedChars(src, x);
                 continue;
                 };
-                TokenOffset offset;
-                offset.off = x;
                 tokenOffsets.push(offset);
                 tokenTypes.push(type);
                 x += 1;

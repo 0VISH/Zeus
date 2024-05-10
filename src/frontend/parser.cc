@@ -9,6 +9,7 @@ enum class ASTType{
     DECIMAL,
     TYPE,
     IF,
+    FOR,
 
     B_START,  //binary operators start
     B_ADD,
@@ -56,6 +57,21 @@ struct ASTIf : ASTBase{
     ASTBase **elseBody;
     u32 ifBodyCount;
     u32 elseBodyCount;
+};
+struct ASTFor : ASTBase{
+    //when expr and intializer is nullptr, then we have an infinite loop
+    union{
+    //c-while
+        ASTBase *expr;
+    //c-for
+        ASTBase *step;
+    };
+    String iter;
+    ASTTypeNode *type;
+    ASTBase *intializer;
+    ASTBase *end;
+    ASTBase **body;
+    u32 bodyCount;
 };
 
 struct ASTFile{
@@ -265,23 +281,16 @@ ASTBase* genASTExprTree(Lexer &lexer, ASTFile &file, u32 &x, u32 end){
     return tree;
 };
 
-inline bool isEndOfLineOrFile(DynamicArray<TokType> &types, u32 x){
-    return types[x] == (TokType)'\n' || types[x] == TokType::END_OF_FILE;
-};
 inline u32 getEndOfLineOrFile(DynamicArray<TokType> &types, u32 x){
-    while(!isEndOfLineOrFile(types, x)) x++;
+    while(types[x] != (TokType)'\n' && types[x] != TokType::END_OF_FILE) x++;
     return x;
 }
-inline u32 getNewLineOrBracketOrCollon(DynamicArray<TokType> &types, u32 x){
-    while(!isEndOfLineOrFile(types, x) && types[x] != (TokType)'{' && types[x] != (TokType)':') x++;
-    return x;
-};
 inline u32 eatNewLine(DynamicArray<TokType> &types, u32 x){
     while(types[x] == (TokType)'\n') x++;
     return x;
 };
 bool parseBlock(Lexer &lexer, ASTFile &file, DynamicArray<ASTBase*> &table, u32 &xArg);
-ASTBase** parseBody(Lexer &lexer, ASTFile &file, DynamicArray<ASTBase*> &table, u32 &xArg, u32 &count){
+ASTBase** parseBody(Lexer &lexer, ASTFile &file, u32 &xArg, u32 &count){
     BRING_TOKENS_TO_SCOPE;
     u32 x = xArg;
     DEFER(xArg = x);
@@ -332,16 +341,109 @@ bool parseBlock(Lexer &lexer, ASTFile &file, DynamicArray<ASTBase*> &table, u32 
     });
     u32 start = x;
     switch(tokTypes[x]){
+        case TokType::K_FOR:{
+            x++;
+            ASTFor *For = (ASTFor*)file.newNode(sizeof(ASTFor), ASTType::FOR);
+            if(tokTypes[x+1] == (TokType)':'){
+                //c-for
+                For->iter = makeStringFromTokOff(x, lexer);
+                x += 2;
+                ASTBase *node;
+                if(tokTypes[x] != (TokType)'='){
+                    ASTTypeNode *typeNode = genASTTypeNode(lexer, file, x);
+                    if(!node) return false;
+                    For->type = typeNode;
+                }else For->type = nullptr;
+                if(tokTypes[x] != (TokType)'='){
+                    lexer.emitErr(tokOffs[x].off, "Expected '='");
+                    return false;
+                };
+                x++;
+                u32 end = x;
+                while(tokTypes[end] != (TokType)'\n' && tokTypes[end] != (TokType)'{' && tokTypes[end] != (TokType)':' && tokTypes[end] != TokType::TDOT){
+                    if(tokTypes[end] == TokType::END_OF_FILE){
+                        lexer.emitErr(tokOffs[end].off, "Expected '{' or ':' or '...'");
+                        return false;
+                    };
+                    end++;
+                };
+                node = genASTExprTree(lexer, file, x, end);
+                if(!node) return false;
+                For->intializer = node;
+                if(tokTypes[x] != TokType::TDOT){
+                    lexer.emitErr(tokOffs[x].off, "Expected '...'");
+                    return false;
+                }
+                x++;
+                end = x;
+                while(tokTypes[end] != (TokType)'\n' && tokTypes[end] != (TokType)'{' && tokTypes[end] != (TokType)':' && tokTypes[end] != TokType::DDOT){
+                    if(tokTypes[end] == TokType::END_OF_FILE){
+                        lexer.emitErr(tokOffs[end].off, "Expected '{' or ':' or '..'");
+                        return false;
+                    };
+                    end++;
+                };
+                node = genASTExprTree(lexer, file, x, end);
+                if(!node) return false;
+                For->end = node;
+                if(tokTypes[x] == TokType::DDOT){
+                    x++;
+                    end = x;
+                    while(tokTypes[end] != (TokType)'\n' && tokTypes[end] != (TokType)'{' && tokTypes[end] != (TokType)':'){
+                        if(tokTypes[end] == TokType::END_OF_FILE){
+                            lexer.emitErr(tokOffs[end].off, "Expected '{' or ':'");
+                            return false;
+                        };
+                        end++;
+                    };
+                    node = genASTExprTree(lexer, file, x, end);
+                    if(!node) return false;
+                    For->step = node;
+                }else For->step = nullptr;
+            }else{
+                For->intializer = nullptr;
+                if(tokTypes[x] == (TokType)'{' || tokTypes[x] == (TokType)':'){
+                    //for ever
+                    For->expr = nullptr;
+                }else{
+                    //c-while
+                    u32 end = x;
+                    while(tokTypes[end] != (TokType)'\n' && tokTypes[end] != (TokType)'{' && tokTypes[end] != (TokType)':'){
+                        if(tokTypes[end] == TokType::END_OF_FILE){
+                            lexer.emitErr(tokOffs[end].off, "Expected '{' or ':'");
+                            return false;
+                        };
+                        end++;
+                    };
+                    ASTBase *node = genASTExprTree(lexer, file, x, end);
+                    if(!node) return false;
+                    For->expr = node;
+                };
+            };
+            u32 count;
+            ASTBase **body = parseBody(lexer, file, x, count);
+            if(!body) return false;
+            For->body = body;
+            For->bodyCount = count;
+            table.push(For);
+        }break;
         case TokType::K_IF:{
             x++;
-            u32 end = getNewLineOrBracketOrCollon(lexer.tokenTypes, x);
+            u32 end = x;
+            while(tokTypes[end] != (TokType)'\n' && tokTypes[end] != (TokType)'{' && tokTypes[end] != (TokType)':'){
+                if(tokTypes[end] == TokType::END_OF_FILE){
+                    lexer.emitErr(tokOffs[start].off, "Expected '{' or ':'");
+                    return false;
+                };
+                end++;
+            };
             ASTBase *expr = genASTExprTree(lexer, file, x, end);
             if(!expr) return false;
             ASTIf *If = (ASTIf*)file.newNode(sizeof(ASTIf), ASTType::IF);
             If->expr = expr;
             x = eatNewLine(lexer.tokenTypes, x);
             u32 count;
-            ASTBase **bodyNodes = parseBody(lexer, file, table, x, count);
+            ASTBase **bodyNodes = parseBody(lexer, file, x, count);
             if(!bodyNodes) return false;
             If->ifBody = bodyNodes;
             If->ifBodyCount = count;
@@ -361,7 +463,7 @@ bool parseBlock(Lexer &lexer, ASTFile &file, DynamicArray<ASTBase*> &table, u32 
                     If->elseBody = elseIfNode;
                     If->elseBodyCount = 1;
                 }else{
-                    bodyNodes = parseBody(lexer, file, table, x, count);
+                    bodyNodes = parseBody(lexer, file, x, count);
                     if(!bodyNodes) return false;
                     If->elseBody = bodyNodes;
                     If->elseBodyCount = count;
@@ -466,6 +568,33 @@ namespace dbg{
         PLOG("type: ");
         bool hasNotDumped = true;
         switch(node->type){
+            case ASTType::FOR:{
+                ASTFor *For = (ASTFor*)node;
+                if(For->expr == nullptr && For->intializer == nullptr){
+                    printf("for ever");
+                }else if(For->intializer != nullptr){
+                    printf("for(c-for)");
+                    PLOG("iter: %.*s", For->iter.len, For->iter.mem);
+                    if(For->type){
+                        PLOG("type:");
+                        dumpASTNode(For->type, lexer, padding+1);
+                    }
+                    PLOG("start:");
+                    dumpASTNode(For->intializer, lexer, padding+1);
+                    PLOG("end:");
+                    dumpASTNode(For->end, lexer, padding+1);
+                    if(For->step){
+                        PLOG("step:");
+                        dumpASTNode(For->step, lexer, padding+1);
+                    };
+                }else{
+                    printf("for(c-while)");
+                    PLOG("expr:");
+                    dumpASTNode(For->expr, lexer, padding+1);
+                };
+                PLOG("body:");
+                dumpASTBody(For->body, For->bodyCount, lexer, padding+1);
+            }break;
             case ASTType::IF:{
                 ASTIf *If = (ASTIf*)node;
                 printf("if");
