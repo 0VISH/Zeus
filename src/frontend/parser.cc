@@ -14,6 +14,7 @@ enum class ASTType{
     STRUCT,
     MODIFIER,
     VARIABLE,
+    PROC_CALL,
 
     B_START,  //binary operators start
     B_ADD,
@@ -98,6 +99,11 @@ struct ASTModifier : ASTBase{
     ASTBase *child;
     u32 tokenOff;
     u8 pAccessDepth;
+};
+struct ASTProcCall : ASTBase{
+    String name;
+    ASTBase **args;
+    u32 argCount;
 };
 
 struct ASTFile{
@@ -192,8 +198,10 @@ u32 getOperatorPriority(ASTType op){
     };
     return 0;
 };
-ASTBase *genVariable(Lexer &lexer, ASTFile &file, u32 &x){
+ASTBase *genVariable(Lexer &lexer, ASTFile &file, u32 &xArg){
     BRING_TOKENS_TO_SCOPE;
+    u32 x = xArg;
+    DEFER(xArg = x-1);
     ASTBase *root = nullptr;
     bool childReq = false;
     ASTModifier *lastMod = nullptr;
@@ -249,6 +257,7 @@ ASTTypeNode* genASTTypeNode(Lexer &lexer, ASTFile &file, u32 &xArg){
     type->pointerDepth = pointerDepth;
     return type;
 };
+ASTBase* genASTExprTree(Lexer &lexer, ASTFile &file, u32 &x);
 ASTBase* _genASTExprTree(Lexer &lexer, ASTFile &file, u32 &xArg, u8 &bracketArg){
     BRING_TOKENS_TO_SCOPE;
     u32 x = xArg;
@@ -284,6 +293,33 @@ ASTBase* _genASTExprTree(Lexer &lexer, ASTFile &file, u32 &xArg, u8 &bracketArg)
         case TokType::IDENTIFIER:{
             if(tokTypes[x+1] == (TokType)'('){
                 //TODO:
+                ASTProcCall *pcall = (ASTProcCall*)file.newNode(sizeof(ASTProcCall), ASTType::PROC_CALL);
+                pcall->name = makeStringFromTokOff(x, lexer);
+                x += 2;
+                DynamicArray<ASTBase*> args;
+                args.init();
+                while(true){
+                    ASTBase *arg = genASTExprTree(lexer, file, x);
+                    if(!arg){
+                        args.uninit();
+                        return nullptr;
+                    }
+                    args.push(arg);
+                    if(tokTypes[x] == (TokType)')') break;
+                    if(tokTypes[x] != (TokType)','){
+                        lexer.emitErr(tokOffs[x].off, "Expected ')' or ','");
+                        return nullptr;
+                    };
+                    x++;
+                };
+                x++;
+                u32 size = sizeof(ASTBase*)*args.count;
+                ASTBase **argNodes = (ASTBase**)file.balloc(size);
+                memcpy(argNodes, args.mem, size);
+                pcall->args = argNodes;
+                pcall->argCount = args.count;
+                args.uninit();
+                lhs = pcall;
             }else{
                 lhs = genVariable(lexer, file, x);
                 if(!lhs) return nullptr;
@@ -299,8 +335,8 @@ ASTBase* _genASTExprTree(Lexer &lexer, ASTFile &file, u32 &xArg, u8 &bracketArg)
     if(tokTypes[x] == (TokType)')'){
         hasBracket=false;
         while(tokTypes[x] == (TokType)')'){
-            x++;
             if(bracket == 0) return lhs;
+            x++;
             bracket--;
         }
     };
@@ -416,6 +452,7 @@ ASTBase* parseAssDecl(Lexer &lexer, ASTFile &file, u32 &xArg){
     }
     lhs.push(var);
     u32 lhsCount = 1;
+    x++;
     while(tokTypes[x] != (TokType)':' && tokTypes[x] != (TokType)'='){
         if(tokTypes[x] != (TokType)','){
             lexer.emitErr(tokOffs[x].off, "Expected ',' or ':'");
@@ -667,7 +704,10 @@ bool parseBlock(Lexer &lexer, ASTFile &file, DynamicArray<ASTBase*> &table, u32 
                     break;
                 };
             };
-            if(!shouldParseAssOrDecl) goto PARSE_EXPRESSION;
+            if(!shouldParseAssOrDecl){
+                x = start;
+                goto PARSE_EXPRESSION;
+            };
             ASTBase *assdecl = parseAssDecl(lexer, file, start);
             if(!assdecl) return false;
             x = start;
@@ -722,6 +762,13 @@ namespace dbg{
         PLOG("type: ");
         bool hasNotDumped = true;
         switch(node->type){
+            case ASTType::PROC_CALL:{
+                ASTProcCall *pcall = (ASTProcCall*)node;
+                printf("proc_call");
+                PLOG("name: %.*s", pcall->name.len, pcall->name.mem);
+                PLOG("args:");
+                dumpASTBody(pcall->args, pcall->argCount, lexer, padding+1);
+            }break;
             case ASTType::VARIABLE:{
                 ASTVariable *var = (ASTVariable*)node;
                 printf("variable");
