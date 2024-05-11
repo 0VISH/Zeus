@@ -525,6 +525,7 @@ bool parseBlock(Lexer &lexer, ASTFile &file, DynamicArray<ASTBase*> &table, u32 
                                             inputs.uninit();
                                             return false;
                                         }else if(tokTypes[x] == (TokType)')') break;
+                                        x++;
                                     };
                                     u32 size = sizeof(ASTBase*)*inputs.count;
                                     ASTBase **inputNodes = (ASTBase**)file.balloc(size);
@@ -534,6 +535,51 @@ bool parseBlock(Lexer &lexer, ASTFile &file, DynamicArray<ASTBase*> &table, u32 
                                     inputs.uninit();
                                 };
                                 x++;
+                                if(tokTypes[x] == (TokType)'-'){
+                                    x++;
+                                    if(tokTypes[x] != (TokType)'>'){
+                                        lexer.emitErr(tokOffs[x].off, "Expected '>'");
+                                        return false;
+                                    }
+                                    x++;
+                                    bool bracket = false;
+                                    if(tokTypes[x] == (TokType)'('){
+                                        bracket = true;
+                                        x++;
+                                    };
+                                    DynamicArray<ASTTypeNode*> outputs;
+                                    outputs.init();
+                                    while(true){
+                                        ASTTypeNode *output = genASTTypeNode(lexer, file, x);
+                                        if(!output){
+                                            outputs.uninit();
+                                            return false;
+                                        };
+                                        outputs.push(output);
+                                        if(tokTypes[x] != (TokType)')' && tokTypes[x] != (TokType)',' && tokTypes[x] != (TokType)'{'){
+                                            lexer.emitErr(tokOffs[x].off, "Expected ')' or ',' or '{'");
+                                            outputs.uninit();
+                                            return false;
+                                        }else if(tokTypes[x] == (TokType)'{') break;
+                                        else if(tokTypes[x] == (TokType)')'){
+                                            if(!bracket){
+                                                lexer.emitErr(tokOffs[x].off, "No opening bracket to match this closing bracket");
+                                                outputs.uninit();
+                                                return false;
+                                            }else{
+                                                x++;
+                                                break;
+                                            };
+                                        }
+                                        x++;
+                                    };
+                                    u32 size = sizeof(ASTBase*)*outputs.count;
+                                    ASTTypeNode **outputNodes = (ASTTypeNode**)file.balloc(size);
+                                    memcpy(outputNodes, outputs.mem, size);
+                                    proc->outputs = outputNodes;
+                                    proc->outputCount = outputs.count;
+                                    outputs.uninit();
+                                }else proc->outputCount = 0;
                                 u32 count;
                                 ASTBase **body = parseBody(lexer, file, x, count);
                                 proc->body = body;
@@ -606,6 +652,10 @@ namespace dbg{
                     PLOG("input:");
                     dumpASTBody(proc->inputs, proc->inputCount, lexer, padding+1);
                 };
+                if(proc->outputCount){
+                    PLOG("output:");
+                    dumpASTBody((ASTBase**)proc->outputs, proc->outputCount, lexer, padding+1);
+                }
                 PLOG("body:");
                 dumpASTBody(proc->body, proc->bodyCount, lexer, padding+1);
             }break;
