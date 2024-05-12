@@ -17,6 +17,7 @@ enum class ASTType{
     PROC_CALL,
     INITIALIZER_LIST,
     STRING,
+    CHAR,
     ARRAY_AT,
 
     B_START,  //binary operators start
@@ -212,6 +213,7 @@ u32 getOperatorPriority(ASTType op){
     };
     return 0;
 };
+ASTBase* genASTExprTree(Lexer &lexer, ASTFile &file, u32 &x);
 ASTBase *genVariable(Lexer &lexer, ASTFile &file, u32 &xArg){
     BRING_TOKENS_TO_SCOPE;
     u32 x = xArg;
@@ -243,6 +245,16 @@ ASTBase *genVariable(Lexer &lexer, ASTFile &file, u32 &xArg){
             var->tokenOff = start;
             var->pAccessDepth = pointerDepth;
             childReq = false;
+            if(tokTypes[x] == (TokType)'['){
+                x++;
+                ASTArrayAt *arrayAt = (ASTArrayAt*)file.newNode(sizeof(ASTArrayAt), ASTType::ARRAY_AT);
+                ASTBase *at = genASTExprTree(lexer, file, x);
+                if(!at) return nullptr;
+                arrayAt->at = at;
+                arrayAt->parent = var;
+                x++;
+                var = (ASTVariable*)arrayAt;
+            };
             if(root == nullptr){root = var;};
             if(lastMod){lastMod->child = var;};
         };
@@ -271,7 +283,6 @@ ASTTypeNode* genASTTypeNode(Lexer &lexer, ASTFile &file, u32 &xArg){
     type->pointerDepth = pointerDepth;
     return type;
 };
-ASTBase* genASTExprTree(Lexer &lexer, ASTFile &file, u32 &x);
 ASTBase* _genASTExprTree(Lexer &lexer, ASTFile &file, u32 &xArg, u8 &bracketArg){
     BRING_TOKENS_TO_SCOPE;
     u32 x = xArg;
@@ -303,6 +314,16 @@ ASTBase* _genASTExprTree(Lexer &lexer, ASTFile &file, u32 &xArg, u8 &bracketArg)
             ASTNum *num = (ASTNum*)file.newNode(sizeof(ASTNum), ASTType::DECIMAL);
             num->decimal = value;
             lhs = num;
+        }break;
+        case TokType::DOUBLE_QUOTES:{
+            ASTString *str = (ASTString*)file.newNode(sizeof(ASTString), ASTType::STRING);
+            str->str = makeStringFromTokOff(x, lexer);
+            lhs = str;
+        }break;
+        case TokType::SINGLE_QUOTES:{
+            ASTString *str = (ASTString*)file.newNode(sizeof(ASTString), ASTType::CHAR);
+            str->str = makeStringFromTokOff(x, lexer);
+            lhs = str;
         }break;
         case TokType::IDENTIFIER:{
             if(tokTypes[x+1] == (TokType)'('){
@@ -362,6 +383,7 @@ ASTBase* _genASTExprTree(Lexer &lexer, ASTFile &file, u32 &xArg, u8 &bracketArg)
         case TokType::DDOT:
         case (TokType)'\n':
         case (TokType)'}':
+        case (TokType)']':
         case (TokType)',': return lhs;
         case (TokType)'-': type = ASTType::B_SUB; break;
         case (TokType)'+': type = ASTType::B_ADD; break;
@@ -745,11 +767,11 @@ bool parseBlock(Lexer &lexer, ASTFile &file, DynamicArray<ASTBase*> &table, u32 
             };
             bool shouldParseAssOrDecl = false;
             while(tokTypes[x] != (TokType)'\n' && tokTypes[x] != TokType::END_OF_FILE){
-                x++;
                 if(tokTypes[x] == (TokType)'=' && tokTypes[x+1] != (TokType)'='){
                     shouldParseAssOrDecl = true;
                     break;
                 };
+                x++;
             };
             if(!shouldParseAssOrDecl){
                 x = start;
@@ -809,6 +831,20 @@ namespace dbg{
         PLOG("type: ");
         bool hasNotDumped = true;
         switch(node->type){
+            case ASTType::CHAR: printf("char"); hasNotDumped = false;
+            case ASTType::STRING:{
+                ASTString *str = (ASTString*)node;
+                if(hasNotDumped) printf("string");
+                PLOG("value: %.*s", str->str.len, str->str.mem);
+            }break;
+            case ASTType::ARRAY_AT:{
+                ASTArrayAt *arrayAt = (ASTArrayAt*)node;
+                printf("array_at");
+                PLOG("at:");
+                dumpASTNode(arrayAt->at, lexer, padding+1);
+                PLOG("parent:");
+                dumpASTNode(arrayAt->parent, lexer, padding+1);
+            }break;
             case ASTType::INITIALIZER_LIST:{
                 ASTInitializerList *list = (ASTInitializerList*)node;
                 printf("initializer_list");
