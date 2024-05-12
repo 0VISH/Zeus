@@ -159,6 +159,15 @@ struct ASTFile{
     };
 };
 
+//------------DEPENDENCY-SYSTEM-----------------------
+struct FileEntity{
+    Lexer lexer;
+    ASTFile file;
+};
+static DynamicArray<FileEntity> linearDepEntities;
+static DynamicArray<String> linearDepStrings;
+//------------DEPENDENCY-SYSTEM-----------------------
+
 //TODO: Hacked together af. REWRITE(return u64)
 s64 string2int(const String &str){
     s64 num = 0;
@@ -218,6 +227,10 @@ ASTBase *genVariable(Lexer &lexer, ASTFile &file, u32 &xArg){
     BRING_TOKENS_TO_SCOPE;
     u32 x = xArg;
     DEFER(xArg = x-1);
+    if(tokTypes[x] != TokType::IDENTIFIER){
+        lexer.emitErr(tokOffs[x].off, "Expected an identifier");
+        return nullptr;
+    };
     ASTBase *root = nullptr;
     bool childReq = false;
     ASTModifier *lastMod = nullptr;
@@ -570,6 +583,16 @@ bool parseBlock(Lexer &lexer, ASTFile &file, DynamicArray<ASTBase*> &table, u32 
     });
     u32 start = x;
     switch(tokTypes[x]){
+        case TokType::P_IMPORT:{
+            x++;
+            if(tokTypes[x] != TokType::DOUBLE_QUOTES){
+                lexer.emitErr(tokOffs[x].off, "Expected a string");
+                return false;
+            };
+            String name = makeStringFromTokOff(x, lexer);
+            linearDepStrings.push(name);
+            x++;
+        }break;
         case TokType::K_FOR:{
             x++;
             ASTFor *For = (ASTFor*)file.newNode(sizeof(ASTFor), ASTType::FOR);
@@ -764,6 +787,7 @@ bool parseBlock(Lexer &lexer, ASTFile &file, DynamicArray<ASTBase*> &table, u32 
                         table.push(proc);
                     }break;
                 };
+                return true;
             };
             bool shouldParseAssOrDecl = false;
             while(tokTypes[x] != (TokType)'\n' && tokTypes[x] != TokType::END_OF_FILE){
