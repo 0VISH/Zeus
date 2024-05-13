@@ -1,8 +1,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 
-#include "config.hh"
 #if(SIMD)
 #include <immintrin.h>
 #endif
@@ -20,3 +20,4 @@
 #include "frontend/lexer.cc"
 #include "frontend/type.hh"
 #include "frontend/parser.cc"
+#include "frontend/checker.cc"

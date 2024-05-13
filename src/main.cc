@@ -52,8 +52,8 @@ s32 main(s32 argc, char **argv){
         report::flushReports();
         return EXIT_SUCCESS;
     };
-    while(linearDepStrings.count != 0){
-        String path = linearDepStrings.pop();
+    for(u32 x=0; x<linearDepStrings.count; x++){
+        String path = linearDepStrings[x];
         char c = path.mem[path.len];
         path.mem[path.len] = '\0';
         FileEntity &fe = linearDepEntities.newElem();
@@ -69,8 +69,22 @@ s32 main(s32 argc, char **argv){
             return EXIT_SUCCESS;
         };
     };
+    u32 dependencyCount = linearDepEntities.count;
+    globalScopes = (Scope*)mem::alloc(sizeof(Scope) * dependencyCount);
+    DEFER({
+        for(u32 x=0; x<dependencyCount; x++) globalScopes[x].uninit();
+        mem::free(globalScopes);
+    });
+    for(u32 x=dependencyCount; x > 0;){
+        x -= 1;
+        FileEntity &fe = linearDepEntities[x];
+        if(!checkASTFile(fe.lexer, fe.file, globalScopes[x])){
+            report::flushReports();
+            return EXIT_SUCCESS;
+        };
+    };
 #if(DBG)
-    for(u32 x=0; x<linearDepEntities.count; x++){
+    for(u32 x=0; x<dependencyCount; x++){
         FileEntity &fe = linearDepEntities[x];
         printf("--------------FILE: %s--------------", fe.lexer.fileName);
         dbg::dumpASTFile(fe.file, fe.lexer);

@@ -1,8 +1,10 @@
 #define MAX_ERRORS 10
 #define MAX_WARNINGS 10
 
-#if(MSVC_COMPILER && SIMD)
+#ifdef _MSC_VER
+#if SIMD
 #define __builtin_popcount __popcnt
+#endif
 #endif
 
 namespace report{

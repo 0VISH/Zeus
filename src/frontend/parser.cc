@@ -124,15 +124,18 @@ struct ASTString : ASTBase{
 struct ASTFile{
     DynamicArray<char*>    pages;
     DynamicArray<ASTBase*> nodes;
+    DynamicArray<u32>      dependencies;
     u32 curPageWatermark;
 
     void init(){
+        dependencies.init();
         pages.init();
         nodes.init();
         pages.push((char*)mem::alloc(AST_PAGE_SIZE));
         curPageWatermark = 0;
     };
     void uninit(){
+        dependencies.uninit();
         for(u32 x=0; x<pages.count; x++) mem::free(pages[x]);
         pages.uninit();
         nodes.uninit();
@@ -590,6 +593,7 @@ bool parseBlock(Lexer &lexer, ASTFile &file, DynamicArray<ASTBase*> &table, u32 
                 return false;
             };
             String name = makeStringFromTokOff(x, lexer);
+            file.dependencies.push(linearDepStrings.count);
             linearDepStrings.push(name);
             x++;
         }break;
@@ -603,7 +607,7 @@ bool parseBlock(Lexer &lexer, ASTFile &file, DynamicArray<ASTBase*> &table, u32 
                 ASTBase *node;
                 if(tokTypes[x] != (TokType)'='){
                     ASTTypeNode *typeNode = genASTTypeNode(lexer, file, x);
-                    if(!node) return false;
+                    if(!typeNode) return false;
                     For->type = typeNode;
                 }else For->type = nullptr;
                 if(tokTypes[x] != (TokType)'='){

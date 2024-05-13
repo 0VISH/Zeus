@@ -4,8 +4,4 @@ if [ ! -d "bin/lin/" ]; then
     mkdir bin/lin
 fi
 
-clang++ src/main.cc --debug -o bin/lin/zeus.o -D LIN=1
-
-if [ $? -eq 0 ]; then
-    ./bin/lin/zeus.o
-fi
+clang++ src/main.cc -O2 -march=native -o bin/lin/zeus.o -D LIN=1 -D SIMD=1
