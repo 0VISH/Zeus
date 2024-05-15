@@ -406,10 +406,7 @@ struct Lexer {
 namespace dbg {
     void dumpLexerTokens(Lexer &lexer) {
         for (u32 x = 0; x < lexer.tokenTypes.count; x += 1) {
-            u32 line = 1;
-            u32 off = 1;
-            report::getLineAndOff(lexer.fileContent, lexer.tokenOffsets[x].off, line, off);
-            printf("\n-----[TOKEN @ line: %d off: %d]-----\n", line, off);
+            printf("\n-----[TOKEN]-----\n");
             switch (lexer.tokenTypes[x]) {
             case TokType::DOUBLE_QUOTES: {
             printf("double_quotes: %.*s", lexer.tokenOffsets[x].len, lexer.fileContent + lexer.tokenOffsets[x].off);

@@ -214,16 +214,6 @@ s64 string2int(const String &str){
     };
     return num;
 }
-f64 string2float(const String &str){
-    u32 decimal = 0;
-    while(str[decimal] != '.'){decimal += 1;};
-    u32 postDecimalBadChar = 0;
-    for(u32 x=decimal+1; x<str.len; x+=1){
-    	if(str[x] == '_'){postDecimalBadChar += 1;};
-    };
-    s64 num = string2int(str);
-    return (f64)num/pow(10, str.len-decimal-1-postDecimalBadChar);
-};
 String makeStringFromTokOff(u32 x, Lexer &lexer){
     BRING_TOKENS_TO_SCOPE;
     TokenOffset off = tokOffs[x];
@@ -352,9 +342,16 @@ ASTBase* _genASTExprTree(Lexer &lexer, ASTFile &file, u32 &xArg, u8 &bracketArg)
             lhs = num;
         }break;
         case TokType::DECIMAL:{
-            f64 value = string2float(makeStringFromTokOff(x, lexer));
+            String str = makeStringFromTokOff(x, lexer);
+            u32 decimal = 0;
+            while(str[decimal] != '.'){decimal += 1;};
+            u32 postDecimalBadChar = 0;
+            for(u32 x=decimal+1; x<str.len; x+=1){
+                if(str[x] == '_'){postDecimalBadChar += 1;};
+            };
+            s64 number = string2int(str);
             ASTNum *num = (ASTNum*)file.newNode(sizeof(ASTNum), ASTType::DECIMAL);
-            num->decimal = value;
+            num->decimal = (f64)number/pow(10, str.len-decimal-1-postDecimalBadChar);
             lhs = num;
         }break;
         case TokType::K_FALSE:
@@ -1051,6 +1048,11 @@ namespace dbg{
                     PLOG("rhs:");
                     dumpASTNode(assdecl->rhs, lexer, padding+1);
                 };
+            }break;
+            case ASTType::DECIMAL:{
+                ASTNum *num = (ASTNum*)node;
+                printf("decimal");
+                PLOG("value: %f", num->decimal);
             }break;
             case ASTType::INTEGER:{
                 ASTNum *num = (ASTNum*)node;
