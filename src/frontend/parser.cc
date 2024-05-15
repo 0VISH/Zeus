@@ -109,6 +109,7 @@ struct ASTStruct : ASTBase{
     String name;
     ASTBase **body;
     u32 bodyCount;
+    u32 tokenOff;
 };
 struct ASTVariable : ASTBase{
     String name;
@@ -751,6 +752,7 @@ bool parseBlock(Lexer &lexer, ASTFile &file, DynamicArray<ASTBase*> &table, u32 
                         x++;
                         ASTStruct *Struct = (ASTStruct*)file.newNode(sizeof(ASTStruct), ASTType::STRUCT);
                         Struct->name = makeStringFromTokOff(start, lexer);
+                        Struct->tokenOff = start;
                         u32 count;
                         ASTBase **body = parseBody(lexer, file, x, count);
                         if(!body) return false;
@@ -849,7 +851,7 @@ bool parseBlock(Lexer &lexer, ASTFile &file, DynamicArray<ASTBase*> &table, u32 
             };
             bool shouldParseAssOrDecl = false;
             while(tokTypes[x] != (TokType)'\n' && tokTypes[x] != TokType::END_OF_FILE){
-                if(tokTypes[x] == (TokType)'=' && tokTypes[x+1] != (TokType)'='){
+                if((tokTypes[x] == (TokType)'=' && tokTypes[x+1] != (TokType)'=') || tokTypes[x] == (TokType)':'){
                     shouldParseAssOrDecl = true;
                     break;
                 };

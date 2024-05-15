@@ -1,3 +1,4 @@
-if true == !true {
-    x : u32 = 2.3
+foo :: struct{
+    x: u32
+    yx: u64
 }

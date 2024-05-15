@@ -88,11 +88,7 @@ namespace Word{
     void uninit(HashmapStr &map){map.uninit();};
 };
 
-bool isKeyword(TokType type){return type > TokType::K_START && type < TokType::K_END; };
-bool isPoundword(TokType type){return type > TokType::P_START && type < TokType::P_END;};
-bool isType(TokType type){
-    return (type>TokType::K_TYPE_START && type<TokType::K_TYPE_END);
-};
+bool isType(TokType type){return (type>TokType::K_TYPE_START && type<TokType::K_TYPE_END);};
 u32 eatUnwantedChars(char *mem, u32 x){
     while (true) {
         switch (mem[x]) {
@@ -426,9 +422,9 @@ namespace dbg {
             case TokType::END_OF_FILE: printf("end_of_file"); break;
             case (TokType)'\n': printf("new_line"); break;
             default:
-            if(isKeyword(lexer.tokenTypes[x])){
+            if(lexer.tokenTypes[x] > TokType::K_START && lexer.tokenTypes[x] < TokType::K_END){
                 printf("keyword: %.*s", lexer.tokenOffsets[x].len, lexer.fileContent + lexer.tokenOffsets[x].off);
-            }else if(isPoundword(lexer.tokenTypes[x])){
+            }else if(lexer.tokenTypes[x] > TokType::P_START && lexer.tokenTypes[x] < TokType::P_END){
                 printf("poundword: %.*s", lexer.tokenOffsets[x].len, lexer.fileContent + lexer.tokenOffsets[x].off);
             }else{
                 printf("%c", (char)lexer.tokenTypes[x]);
