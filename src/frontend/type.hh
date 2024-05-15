@@ -15,5 +15,5 @@ enum class Type{
     U8,
     COMP_DECIMAL,
     COMP_INTEGER,
-    TYPE_COUNT
+    COUNT,
 };

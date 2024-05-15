@@ -64,6 +64,7 @@ struct ASTIf : ASTBase{
     ASTBase **elseBody;
     u32 ifBodyCount;
     u32 elseBodyCount;
+    u32 exprTokenOff;
 };
 struct ASTFor : ASTBase{
     //when expr and intializer is nullptr, then we have an infinite loop
@@ -399,7 +400,7 @@ ASTBase* _genASTExprTree(Lexer &lexer, ASTFile &file, u32 &xArg, u8 &bracketArg)
         case TokType::TDOT:
         case TokType::DDOT:
         case (TokType)'\n':
-        case (TokType)'}':
+        case (TokType)'{':
         case (TokType)']':
         case (TokType)',': return lhs;
         case (TokType)'-': type = ASTType::B_SUB; break;
@@ -655,9 +656,10 @@ bool parseBlock(Lexer &lexer, ASTFile &file, DynamicArray<ASTBase*> &table, u32 
         }break;
         case TokType::K_IF:{
             x++;
+            ASTIf *If = (ASTIf*)file.newNode(sizeof(ASTIf), ASTType::IF);
+            If->exprTokenOff = x;
             ASTBase *expr = genASTExprTree(lexer, file, x);
             if(!expr) return false;
-            ASTIf *If = (ASTIf*)file.newNode(sizeof(ASTIf), ASTType::IF);
             If->expr = expr;
             x = eatNewLine(lexer.tokenTypes, x);
             u32 count;

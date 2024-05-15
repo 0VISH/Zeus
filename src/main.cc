@@ -70,11 +70,23 @@ s32 main(s32 argc, char **argv){
         };
     };
     u32 dependencyCount = linearDepEntities.count;
+    scopeOff = 0;
     globalScopes = (Scope*)mem::alloc(sizeof(Scope) * dependencyCount);
+    scopeAllocMem = (Scope*)mem::alloc(sizeof(Scope)*1000);
     DEFER({
         for(u32 x=0; x<dependencyCount; x++) globalScopes[x].uninit();
         mem::free(globalScopes);
+        for(u32 x=0; x<scopeOff; x++) scopeAllocMem[x].uninit();
+        mem::free(scopeAllocMem);
     });
+#if(DBG)
+    for(u32 x=0; x<dependencyCount; x++){
+        FileEntity &fe = linearDepEntities[x];
+        printf("--------------FILE: %s--------------", fe.lexer.fileName);
+        //dbg::dumpLexerTokens(fe.lexer);
+        dbg::dumpASTFile(fe.file, fe.lexer);
+    }
+#endif
     for(u32 x=dependencyCount; x > 0;){
         x -= 1;
         FileEntity &fe = linearDepEntities[x];
@@ -83,12 +95,5 @@ s32 main(s32 argc, char **argv){
             return EXIT_SUCCESS;
         };
     };
-#if(DBG)
-    for(u32 x=0; x<dependencyCount; x++){
-        FileEntity &fe = linearDepEntities[x];
-        printf("--------------FILE: %s--------------", fe.lexer.fileName);
-        dbg::dumpASTFile(fe.file, fe.lexer);
-    }
-#endif
     return EXIT_SUCCESS;
 };

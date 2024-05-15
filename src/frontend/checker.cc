@@ -1,6 +1,7 @@
 enum class ScopeType{
     GLOBAL,
     PROC,
+    BLOCK,
 };
 
 struct VariableEntity{
@@ -25,6 +26,8 @@ struct Scope{
 };
 
 static Scope *globalScopes;
+static Scope *scopeAllocMem;
+static u32 scopeOff;
 
 VariableEntity *getVariableEntity(ASTBase *node, DynamicArray<Scope*> &scopes){
     String name;
@@ -39,14 +42,11 @@ VariableEntity *getVariableEntity(ASTBase *node, DynamicArray<Scope*> &scopes){
         }break;
         default: return nullptr;
     }
-    for(u32 x=scopes.count-1; x>0;){
+    for(u32 x=scopes.count; x!=0;){
         x -= 1;
         Scope *scope = scopes[x];
         u32 off;
-        if(!scope->var.getValue(name, &off)){
-            x -= 1;
-            continue;
-        };
+        if(!scope->var.getValue(name, &off)) continue;
         return &scope->vars[x];
     };
     return nullptr;
@@ -102,7 +102,7 @@ Type checkTree(Lexer &lexer, ASTBase *node, DynamicArray<Scope*> &scopes, u32 &p
                     lexer.emitErr(tokOffs[binOp->tokenOff].off, "Cannot perform binary operation with 2 pointers");
                     return Type::INVALID;
                 };
-                if(lhsType > Type::TYPE_COUNT || rhsType > Type::TYPE_COUNT){
+                if(lhsType > Type::COUNT || rhsType > Type::COUNT){
                     lexer.emitErr(tokOffs[binOp->tokenOff].off, "Cannot perform binary operation with structures");
                     return Type::INVALID;
                 };
@@ -113,11 +113,11 @@ Type checkTree(Lexer &lexer, ASTBase *node, DynamicArray<Scope*> &scopes, u32 &p
     return Type::INVALID;
 };
 
-bool checkScope(Lexer &lexer, ASTFile &file, DynamicArray<Scope*> &scopes){
+bool checkScope(Lexer &lexer, ASTBase **nodes, u32 nodeCount, DynamicArray<Scope*> &scopes){
     BRING_TOKENS_TO_SCOPE;
     Scope *scope = scopes[scopes.count-1];
-    for(u32 x=0; x<file.nodes.count; x++){
-        ASTBase *node = file.nodes[x];
+    for(u32 x=0; x<nodeCount; x++){
+        ASTBase *node = nodes[x];
         switch(node->type){
             case ASTType::DECLERATION:{
                 ASTAssDecl *assdecl = (ASTAssDecl*)node;
@@ -138,14 +138,39 @@ bool checkScope(Lexer &lexer, ASTFile &file, DynamicArray<Scope*> &scopes){
                     treeType = type->zType;
                 }
                 for(u32 x=0; x<assdecl->lhsCount; x++){
-                    if(getVariableEntity(assdecl->lhs[x], scopes)){
-                        lexer.emitErr(assdecl->tokenOff, "Invalid LHS");
+                    ASTBase *lhsNode = assdecl->lhs[x];
+                    if(getVariableEntity(lhsNode, scopes)){
+                        u32 off;
+                        switch(lhsNode->type){
+                            case ASTType::VARIABLE:{
+                                ASTVariable *var = (ASTVariable*)lhsNode;
+                                off = var->tokenOff;
+                            }break;
+                            case ASTType::MODIFIER:{
+                                ASTModifier *mod = (ASTModifier*)lhsNode;
+                                off = mod->tokenOff;
+                            }break;
+                            default: UNREACHABLE;
+                        }
+                        lexer.emitErr(tokOffs[off].off, "Redefinition");
                         return false;
                     };
-                    VariableEntity *entity = createVariableEntity(assdecl->lhs[x], scopes[scopes.count-1]);
+                    VariableEntity *entity = createVariableEntity(lhsNode, scopes[scopes.count-1]);
                     entity->pointerDepth = treePointerDepth;
                     entity->type = treeType;
                 };
+            }break;
+            case ASTType::IF:{
+                ASTIf *If = (ASTIf*)node;
+                u32 treePointerDepth;
+                Type treeType = checkTree(lexer, If->expr, scopes, treePointerDepth);
+                if(treeType == Type::INVALID || (treeType > Type::COUNT && treePointerDepth == 0)){
+                    lexer.emitErr(tokOffs[If->exprTokenOff].off, "Invalid expression");
+                    return false;
+                };
+                Scope *bodyScope = &scopeAllocMem[scopeOff++];
+                bodyScope->init(ScopeType::BLOCK);
+                return checkScope(lexer, If->ifBody, If->ifBodyCount, scopes);
             }break;
         };
     };
@@ -160,5 +185,5 @@ bool checkASTFile(Lexer &lexer, ASTFile &file, Scope &scope){
         scopes.push(&globalScopes[file.dependencies[x]]);
     };
     scopes.push(&scope);
-    return checkScope(lexer, file, scopes);
+    return checkScope(lexer, file.nodes.mem, file.nodes.count, scopes);
 };
