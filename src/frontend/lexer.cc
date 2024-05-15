@@ -11,17 +11,20 @@ enum class TokType {
     DDOT,
     TDOT,
 
-    K_START,    //keywords start
-    K_U8,
-    K_F32,
+    K_START,       //keywords start
+    K_TYPE_START,  //type start
     K_F64,
-    K_U16,
-    K_U64,
     K_S64,
-    K_U32,
-    K_S8,
-    K_S16,
+    K_U64,
+    K_F32,
     K_S32,
+    K_U32,
+    K_S16,
+    K_U16,
+    K_CHAR,
+    K_S8,
+    K_U8,
+    K_TYPE_END,    //type end
     K_PROC,
     K_IF,
     K_STRUCT,
@@ -47,6 +50,7 @@ namespace Word{
     };
     const WordData keywordsData[] = {
         {"u8", TokType::K_U8},
+        {"char", TokType::K_CHAR},
         {"f32", TokType::K_F32},
         {"f64", TokType::K_F64},
         {"u16", TokType::K_U16},
@@ -83,7 +87,7 @@ namespace Word{
 bool isKeyword(TokType type){return type > TokType::K_START && type < TokType::K_END; };
 bool isPoundword(TokType type){return type > TokType::P_START && type < TokType::P_END;};
 bool isType(TokType type){
-    return (type>TokType::K_START && type<TokType::K_PROC) || type == TokType::IDENTIFIER;
+    return (type>TokType::K_TYPE_START && type<TokType::K_TYPE_END);
 };
 u32 eatUnwantedChars(char *mem, u32 x){
     while (true) {

@@ -1,3 +1,1 @@
-#import "test/t2.zs"
-
-sdf = 's'
+x : u32 = 2

@@ -1,10 +1,7 @@
 #pragma once
 
 enum class Type{
-    UNKOWN,
-    XE_VOID,
-    PTR,
-    STRING,
+    INVALID,
     F64,
     S64,
     U64,
@@ -13,6 +10,7 @@ enum class Type{
     U32,
     S16,
     U16,
+    CHAR,
     S8,
     U8,
     COMP_DECIMAL,

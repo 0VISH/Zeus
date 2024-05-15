@@ -50,6 +50,7 @@ struct ASTAssDecl : ASTBase{
     ASTBase *rhs;
     ASTTypeNode *zType;
     u32 lhsCount;
+    u32 tokenOff;
 };
 struct ASTNum : ASTBase{
     union{
@@ -571,6 +572,7 @@ ASTBase* parseAssDecl(Lexer &lexer, ASTFile &file, u32 &xArg){
             };
         }else{assdecl->zType = nullptr;};
     };
+    assdecl->tokenOff = x;
     x++;
     ASTBase *expr = genASTExprTree(lexer, file, x);
     if(!expr) return nullptr;
