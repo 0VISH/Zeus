@@ -18,8 +18,6 @@ namespace report{
 
     Report errors[MAX_ERRORS];
     u8 errorOff = 0;
-    Report warnings[MAX_WARNINGS];
-    u8 warnOff = 0;
     char reportBuff[1024];
     u32 reportBuffTop = 0;
 
@@ -52,64 +50,52 @@ namespace report{
 	};
 	return mem + offset-off+1;
     };
-
-    void flush(u32 offset, Report *reports, void(*setCol)()){
-	//printf in FILO so that the usr can see first report first in the terminal
-	for (u8 i = offset; i != 0;) {
-	    i -= 1;
-	    Report &rep = reports[i];
-	    u32 line = 1;
-	    u32 off = 1;
-	    char *beg = getLineAndOff(rep.fileContent, rep.off, line, off);
-	    u32 x = 0;
-	    while (beg[x] != '\n' && beg[x] != '\0') {
-		if (beg[x] == '\t') { beg[x] = ' '; }; //replace tabs with spaces for ez reporting and reading
-		x += 1;
-	    };
-	    beg[x] = '\0';
-	    bool printDots = false;
-	    while(off > 40){
-		off -= 40;
-		beg += 40;
-		printDots = true;
-	    }
-	    printf("\n%s: ", rep.fileName);
-	    setCol();
-	    printf(" %s\n", rep.msg);
-	    printf("  %d| ", line);
-	    if(printDots){
-		printf("...");
-	    };
-	    printf("%s\n____", beg);
-	    if(printDots){
-		printf("___");
-	    }
-	    u32 n = line;
-	    while (n > 0) {
-		printf("_");
-		n = n / 10;
-	    }
-	    while (off != 1) {
-		printf("_");
-		off -= 1;
-	    };
-	    printf("^\n");
-	};
-    };
+	
     void flushReports() {
-	os::setPrintColorToWhite();
-	if(errorOff != 0){
-	    flush(errorOff, errors, os::printErrorInRed);
-	};
-	if(warnOff != 0){
-	    flush(warnOff, warnings, os::printWarningInYellow);
-	};
-	if(errorOff != 0){
-	    printf("\nerror: %d", errorOff);
-	};
-	if(warnOff != 0){
-	    printf("\nwarning: %d", warnOff);
-	};
-	if((errorOff | warnOff) != 0){printf("\n");};
+		os::setPrintColorToWhite();
+		if(errorOff != 0){
+			//printf in FILO so that the usr can see first report first in the terminal
+			for (u8 i = errorOff; i != 0;) {
+				i -= 1;
+				Report &rep = errors[i];
+				u32 line = 1;
+				u32 off = 1;
+				char *beg = getLineAndOff(rep.fileContent, rep.off, line, off);
+				u32 x = 0;
+				while (beg[x] != '\n' && beg[x] != '\0') {
+				if (beg[x] == '\t') { beg[x] = ' '; }; //replace tabs with spaces for ez reporting and reading
+				x += 1;
+				};
+				beg[x] = '\0';
+				bool printDots = false;
+				while(off > 40){
+				off -= 40;
+				beg += 40;
+				printDots = true;
+				}
+				printf("\n%s: ", rep.fileName);
+				os::printErrorInRed();
+				printf(" %s\n", rep.msg);
+				printf("  %d| ", line);
+				if(printDots){
+				printf("...");
+				};
+				printf("%s\n____", beg);
+				if(printDots){
+				printf("___");
+				}
+				u32 n = line;
+				while (n > 0) {
+				printf("_");
+				n = n / 10;
+				}
+				while (off != 1) {
+				printf("_");
+				off -= 1;
+				};
+				printf("^\n");
+			};
+			printf("\nerror: %d\n", errorOff);
+		};
     };
 }

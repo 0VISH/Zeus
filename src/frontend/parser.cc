@@ -33,6 +33,10 @@ enum class ASTType{
     B_LSR,
     B_LEQU,
     B_END,    //binary operators end
+    U_START,  //unary operators start
+    U_NOT,
+    U_NEG,
+    U_END,    //unary operators end
 };
 
 struct ASTBase{
@@ -43,6 +47,10 @@ struct ASTBinOp : ASTBase{
     ASTBase *rhs;
     u32 tokenOff;
     bool hasBracket;
+};
+struct ASTUnOp : ASTBase{
+    ASTBase *child;
+    u32 tokenOff;
 };
 struct ASTTypeNode : ASTBase{
     union{
@@ -325,6 +333,15 @@ ASTBase* _genASTExprTree(Lexer &lexer, ASTFile &file, u32 &xArg, u8 &bracketArg)
             bracket++;
         };
     };
+    ASTUnOp *unOp = nullptr;
+    //build unary operator
+    switch(tokTypes[x]){
+        case (TokType)'-':
+        case (TokType)'!':{
+            unOp = (ASTUnOp*)file.newNode(sizeof(ASTUnOp), (tokTypes[x] == (TokType)'-')?ASTType::U_NEG:ASTType::U_NOT);
+            unOp->tokenOff = x++;
+        }break;
+    };
     //build operand
     ASTBase *lhs;
     switch(tokTypes[x]){
@@ -395,6 +412,10 @@ ASTBase* _genASTExprTree(Lexer &lexer, ASTFile &file, u32 &xArg, u8 &bracketArg)
             lexer.emitErr(tokOffs[x].off, "Invalid operand");
             return nullptr;
         }break;
+    };
+    if(unOp){
+        unOp->child = lhs;
+        lhs = unOp;
     };
     x++;
     //closing bracket ')'
@@ -895,6 +916,13 @@ namespace dbg{
         PLOG("type: ");
         bool hasNotDumped = true;
         switch(node->type){
+            case ASTType::U_NEG: printf("u_neg"); hasNotDumped = false;
+            case ASTType::U_NOT:{
+                if(hasNotDumped) printf("u_not");
+                PLOG("child:");
+                ASTUnOp *unOp = (ASTUnOp*)node;
+                dumpASTNode(unOp->child, lexer, padding+1);
+            }break;
             case ASTType::BOOL:{
                 ASTNum *num = (ASTNum*)node;
                 printf("bool");

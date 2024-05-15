@@ -84,6 +84,11 @@ bool fillTypeInfo(Lexer &lexer, ASTTypeNode *node){
 Type checkTree(Lexer &lexer, ASTBase *node, DynamicArray<Scope*> &scopes, u32 &pointerDepth){
     BRING_TOKENS_TO_SCOPE;
     pointerDepth = 0;
+    while(node->type > ASTType::U_START && node->type < ASTType::U_END){
+        //unary ops return the type of the child
+        ASTUnOp *unOp = (ASTUnOp*)node;
+        node = unOp->child;
+    };
     switch(node->type){
         case ASTType::BOOL:    return Type::BOOL;
         case ASTType::INTEGER: return Type::COMP_INTEGER;

@@ -156,19 +156,6 @@ struct Lexer {
         report::reportBuffTop += vsprintf(report::reportBuff, fmt, args);
         va_end(args);
     };
-    void emitWarning(u32 off, char *fmt, ...) {
-        if(report::errorOff == MAX_ERRORS) return;
-        report::Report &rep = report::warnings[report::warnOff];
-        report::warnOff += 1;
-        rep.fileName = fileName;
-        rep.off = off;
-        rep.fileContent = fileContent;
-        rep.msg = report::reportBuff + report::reportBuffTop;
-        va_list args;
-        va_start(args, fmt);
-        report::reportBuffTop += vsprintf(report::reportBuff, fmt, args);
-        va_end(args);
-    };
     b32 genTokens() {
         char *src = fileContent;
         u32 x = eatUnwantedChars(src, 0);
