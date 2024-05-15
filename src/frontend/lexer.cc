@@ -32,6 +32,8 @@ enum class TokType {
     K_CONSTANT,
     K_RETURN,
     K_ELSE,
+    K_TRUE,
+    K_FALSE,
     K_END,       //keywords end
 
     P_START,     //poundwords start
@@ -63,6 +65,8 @@ namespace Word{
         {"proc", TokType::K_PROC},
         {"if", TokType::K_IF},
         {"struct", TokType::K_STRUCT},
+        {"true", TokType::K_TRUE},
+        {"false", TokType::K_FALSE},
         {"for", TokType::K_FOR},
         {"const", TokType::K_CONSTANT},
         {"else", TokType::K_ELSE},

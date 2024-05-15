@@ -85,6 +85,7 @@ Type checkTree(Lexer &lexer, ASTBase *node, DynamicArray<Scope*> &scopes, u32 &p
     BRING_TOKENS_TO_SCOPE;
     pointerDepth = 0;
     switch(node->type){
+        case ASTType::BOOL:    return Type::BOOL;
         case ASTType::INTEGER: return Type::COMP_INTEGER;
         case ASTType::DECIMAL: return Type::COMP_DECIMAL;
         case ASTType::VARIABLE:{

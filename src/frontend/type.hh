@@ -2,6 +2,7 @@
 
 enum class Type{
     INVALID,
+    BOOL,
     F64,
     S64,
     U64,

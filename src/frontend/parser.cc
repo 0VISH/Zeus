@@ -6,6 +6,7 @@ enum class ASTType{
     ASSIGNMENT,
     INTEGER,
     DECIMAL,
+    BOOL,
     TYPE,
     IF,
     FOR,
@@ -26,6 +27,11 @@ enum class ASTType{
     B_MUL,
     B_DIV,
     B_MOD,
+    B_EQU,
+    B_GRT,
+    B_GEQU,
+    B_LSR,
+    B_LEQU,
     B_END,    //binary operators end
 };
 
@@ -54,8 +60,9 @@ struct ASTAssDecl : ASTBase{
 };
 struct ASTNum : ASTBase{
     union{
-        s64 integer;
-        f64 decimal;
+        s64  integer;
+        f64  decimal;
+        bool isTrue;
     };
 };
 struct ASTIf : ASTBase{
@@ -333,6 +340,12 @@ ASTBase* _genASTExprTree(Lexer &lexer, ASTFile &file, u32 &xArg, u8 &bracketArg)
             num->decimal = value;
             lhs = num;
         }break;
+        case TokType::K_FALSE:
+        case TokType::K_TRUE:{
+            ASTNum *num = (ASTNum*)file.newNode(sizeof(ASTNum), ASTType::BOOL);
+            num->isTrue = (tokTypes[x] == TokType::K_TRUE)?true:false;
+            lhs = num;
+        }break;
         case TokType::DOUBLE_QUOTES:{
             ASTString *str = (ASTString*)file.newNode(sizeof(ASTString), ASTType::STRING);
             str->str = makeStringFromTokOff(x, lexer);
@@ -407,6 +420,25 @@ ASTBase* _genASTExprTree(Lexer &lexer, ASTFile &file, u32 &xArg, u8 &bracketArg)
         case (TokType)'+': type = ASTType::B_ADD; break;
         case (TokType)'*': type = ASTType::B_MUL; break;
         case (TokType)'/': type = ASTType::B_DIV; break;
+        case (TokType)'=':{
+            if(tokTypes[x+1] == (TokType)'='){
+                x++;
+                type = ASTType::B_EQU;
+                break;
+            };
+        };
+        case (TokType)'>':{
+            if(tokTypes[x+1] == (TokType)'='){
+                x++;
+                type = ASTType::B_GEQU;
+            }else type = ASTType::B_GRT;
+        }break;
+        case (TokType)'<':{
+            if(tokTypes[x+1] == (TokType)'='){
+                x++;
+                type = ASTType::B_LEQU;
+            }else type = ASTType::B_LSR;
+        }break;
         default:{
             lexer.emitErr(tokOffs[x].off, "Invalid operator");
             return nullptr;
@@ -863,6 +895,11 @@ namespace dbg{
         PLOG("type: ");
         bool hasNotDumped = true;
         switch(node->type){
+            case ASTType::BOOL:{
+                ASTNum *num = (ASTNum*)node;
+                printf("bool");
+                PLOG("value: %s", (num->isTrue)?"true":"false");
+            }break;
             case ASTType::CHAR: printf("char"); hasNotDumped = false;
             case ASTType::STRING:{
                 ASTString *str = (ASTString*)node;
@@ -999,6 +1036,11 @@ namespace dbg{
                 PLOG("z_type: %.*s", ztype.len, ztype.mem);
                 PLOG("pointer_depth: %d", type->pointerDepth);
             }break;
+            case ASTType::B_LEQU: if(hasNotDumped){printf("lequ");hasNotDumped=false;};
+            case ASTType::B_GEQU: if(hasNotDumped){printf("gequ");hasNotDumped=false;};
+            case ASTType::B_GRT: if(hasNotDumped){printf("grt");hasNotDumped=false;};
+            case ASTType::B_LSR: if(hasNotDumped){printf("lsr");hasNotDumped=false;};
+            case ASTType::B_EQU: if(hasNotDumped){printf("equ");hasNotDumped=false;};
             case ASTType::B_ADD: if(hasNotDumped){printf("add");hasNotDumped=false;};
             case ASTType::B_SUB: if(hasNotDumped){printf("sub");hasNotDumped=false;};
             case ASTType::B_MUL: if(hasNotDumped){printf("mul");hasNotDumped=false;};
