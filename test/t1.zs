@@ -1,10 +1,4 @@
-foo :: struct{
-    x: s32
-    y: s32
-}
-goo :: struct{
-    f: foo
-}
+#import "test/t2.zs"
 
 g: goo
 g.f.x = 2

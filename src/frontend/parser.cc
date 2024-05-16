@@ -98,12 +98,13 @@ struct ASTFor : ASTBase{
 };
 struct ASTProcDefDecl : ASTBase{
     String name;
-    ASTBase     **inputs;
+    ASTAssDecl  **inputs;
     ASTTypeNode **outputs;
     ASTBase     **body;
     u32 inputCount;
     u32 outputCount;
     u32 bodyCount;
+    u32 tokenOff;
 };
 struct ASTStruct : ASTBase{
     String name;
@@ -377,7 +378,6 @@ ASTBase* _genASTExprTree(Lexer &lexer, ASTFile &file, u32 &xArg, u8 &bracketArg)
         }break;
         case TokType::IDENTIFIER:{
             if(tokTypes[x+1] == (TokType)'('){
-                //TODO:
                 ASTProcCall *pcall = (ASTProcCall*)file.newNode(sizeof(ASTProcCall), ASTType::PROC_CALL);
                 pcall->name = makeStringFromTokOff(x, lexer);
                 x += 2;
@@ -580,7 +580,7 @@ ASTBase** parseBody(Lexer &lexer, ASTFile &file, u32 &xArg, u32 &count){
         return nullptr;
     };
 };
-ASTBase* parseAssDecl(Lexer &lexer, ASTFile &file, u32 &xArg){
+ASTAssDecl* parseAssDecl(Lexer &lexer, ASTFile &file, u32 &xArg){
     BRING_TOKENS_TO_SCOPE;
     u32 x = xArg;
     u32 start = x;
@@ -773,13 +773,14 @@ bool parseBlock(Lexer &lexer, ASTFile &file, DynamicArray<ASTBase*> &table, u32 
                         };
                         ASTProcDefDecl *proc = (ASTProcDefDecl*)file.newNode(sizeof(ASTProcDefDecl), ASTType::PROC_DEF);
                         proc->name = makeStringFromTokOff(start, lexer);
+                        proc->tokenOff = start;
                         x++;
                         if(tokTypes[x] == (TokType)')'){proc->inputCount = 0;}
                         else{
-                            DynamicArray<ASTBase*> inputs;
+                            DynamicArray<ASTAssDecl*> inputs;
                             inputs.init();
                             while(true){
-                                ASTBase *input = parseAssDecl(lexer, file, x);
+                                ASTAssDecl *input = parseAssDecl(lexer, file, x);
                                 if(!input){
                                     inputs.uninit();
                                     return false;
@@ -792,8 +793,8 @@ bool parseBlock(Lexer &lexer, ASTFile &file, DynamicArray<ASTBase*> &table, u32 
                                 }else if(tokTypes[x] == (TokType)')') break;
                                 x++;
                             };
-                            u32 size = sizeof(ASTBase*)*inputs.count;
-                            ASTBase **inputNodes = (ASTBase**)file.balloc(size);
+                            u32 size = sizeof(ASTAssDecl*)*inputs.count;
+                            ASTAssDecl **inputNodes = (ASTAssDecl**)file.balloc(size);
                             memcpy(inputNodes, inputs.mem, size);
                             proc->inputs = inputNodes;
                             proc->inputCount = inputs.count;
@@ -990,7 +991,7 @@ namespace dbg{
                 PLOG("name: %.*s", proc->name.len, proc->name.mem);
                 if(proc->inputCount){
                     PLOG("input:");
-                    dumpASTBody(proc->inputs, proc->inputCount, lexer, padding+1);
+                    dumpASTBody((ASTBase**)proc->inputs, proc->inputCount, lexer, padding+1);
                 };
                 if(proc->outputCount){
                     PLOG("output:");
