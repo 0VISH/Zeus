@@ -6,17 +6,16 @@
 #if(SIMD)
 #include <immintrin.h>
 #endif
-#include "basic.hh"
-#include "mem.cc"
-#if(LIN)
-#include "os/linux.cc"
-#elif(WIN)
-#include "os/windows.cc"
+#if(WIN)
+#include "windows.h"
 #endif
 
+#include "basic.hh"
+#include "mem.cc"
 #include "ds.cc"
-#include "report.cc"
+#include "threadPool.cc"
 
+#include "report.cc"
 #include "frontend/lexer.cc"
 #include "frontend/type.hh"
 #include "frontend/parser.cc"

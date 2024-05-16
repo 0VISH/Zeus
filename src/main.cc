@@ -72,13 +72,16 @@ s32 main(s32 argc, char **argv){
     u32 dependencyCount = linearDepEntities.count;
     scopeOff = 0;
     globalScopes = (Scope*)mem::alloc(sizeof(Scope) * dependencyCount);
+    memset(globalScopes, 0, sizeof(Scope) * dependencyCount);
     scopeAllocMem = (Scope*)mem::alloc(sizeof(Scope)*1000);
     struc.init();
     strucs.init();
     DEFER({
         strucs.uninit();
         struc.uninit();
-        for(u32 x=0; x<dependencyCount; x++) globalScopes[x].uninit();
+        for(u32 x=0; x<dependencyCount; x++){
+            if(globalScopes[x].vars.len != 0){globalScopes[x].uninit();};
+        };
         mem::free(globalScopes);
         for(u32 x=0; x<scopeOff; x++) scopeAllocMem[x].uninit();
         mem::free(scopeAllocMem);

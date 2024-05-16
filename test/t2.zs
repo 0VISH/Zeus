@@ -6,6 +6,6 @@ goo :: struct{
     f: foo
 }
 
-foo :: proc(x: s32 = 4) -> (u32){
+foo :: proc(x: s32) -> (u32){
     y: u32 = 4
 }

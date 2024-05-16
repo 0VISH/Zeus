@@ -114,7 +114,13 @@ struct Lexer {
 
     bool init(char *fn){
         char tempBuff[100];
-        u32 len = os::getFileFullName(fn, tempBuff);
+#if(WIN)
+        u32 len = GetFullPathNameA(fn, 1024, tempBuff, NULL);
+#elif(LIN)
+        char *fullpath = realpath(fn, tempBuff);
+        if(fullpath == nullptr){return 0;};
+        u32 len = strlen(fullpath);
+#endif
         FILE *fp = fopen(tempBuff, "r");
         fseek(fp, 0, SEEK_END);
         u64 size = ftell(fp);

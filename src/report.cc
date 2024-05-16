@@ -22,7 +22,12 @@ namespace report{
     u32 reportBuffTop = 0;
 	
     void flushReports() {
-		os::setPrintColorToWhite();
+#if(WIN)
+		HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
+        SetConsoleTextAttribute(hConsole, FOREGROUND_RED | FOREGROUND_BLUE | FOREGROUND_GREEN);
+#elif(LIN)
+		printf("\033[97m");
+#endif
 		if(errorOff != 0){
 			//printf in FILO so that the usr can see first report first in the terminal
 			for (u8 i = errorOff; i != 0;) {
@@ -72,7 +77,14 @@ namespace report{
 				printDots = true;
 				}
 				printf("\n%s: ", rep.fileName);
-				os::printErrorInRed();
+#if(WIN)
+				HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
+				SetConsoleTextAttribute(hConsole, FOREGROUND_RED);
+				printf("ERROR");
+				SetConsoleTextAttribute(hConsole, FOREGROUND_RED | FOREGROUND_BLUE | FOREGROUND_GREEN);
+#elif(LIN)
+				printf("\033[31mERROR\033[97m");
+#endif
 				printf(" %s\n", rep.msg);
 				printf("  %d| ", line);
 				if(printDots){
