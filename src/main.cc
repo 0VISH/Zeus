@@ -73,7 +73,11 @@ s32 main(s32 argc, char **argv){
     scopeOff = 0;
     globalScopes = (Scope*)mem::alloc(sizeof(Scope) * dependencyCount);
     scopeAllocMem = (Scope*)mem::alloc(sizeof(Scope)*1000);
+    struc.init();
+    strucs.init();
     DEFER({
+        strucs.uninit();
+        struc.uninit();
         for(u32 x=0; x<dependencyCount; x++) globalScopes[x].uninit();
         mem::free(globalScopes);
         for(u32 x=0; x<scopeOff; x++) scopeAllocMem[x].uninit();

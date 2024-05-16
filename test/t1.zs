@@ -1,4 +1,10 @@
 foo :: struct{
-    x: u32
-    yx: u64
+    x: s32
+    y: s32
 }
+goo :: struct{
+    f: foo
+}
+
+g: goo
+g.f.x = 2

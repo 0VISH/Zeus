@@ -133,7 +133,8 @@ struct ASTInitializerList : ASTBase{
 };
 struct ASTArrayAt : ASTBase{
     ASTBase *at;
-    ASTBase *parent;
+    ASTVariable *parent;
+    ASTBase *child;
 };
 struct ASTString : ASTBase{
     String str;
@@ -244,7 +245,7 @@ ASTBase *genVariable(Lexer &lexer, ASTFile &file, u32 &xArg){
     };
     ASTBase *root = nullptr;
     bool childReq = false;
-    ASTModifier *lastMod = nullptr;
+    ASTBase **childWriteLoc = nullptr;
     while(tokTypes[x] == TokType::IDENTIFIER){
         u32 start = x;
         x += 1;
@@ -260,8 +261,8 @@ ASTBase *genVariable(Lexer &lexer, ASTFile &file, u32 &xArg){
             mod->pAccessDepth = pointerDepth;
             childReq = true;
             if(root == nullptr){root = mod;};
-            if(lastMod){lastMod->child = mod;};
-            lastMod = mod;
+            if(childWriteLoc){*childWriteLoc = mod;};
+            childWriteLoc = &mod->child;
             x += 1;
         }else{
             ASTVariable *var = (ASTVariable*)file.newNode(sizeof(ASTVariable), ASTType::VARIABLE);
@@ -276,11 +277,14 @@ ASTBase *genVariable(Lexer &lexer, ASTFile &file, u32 &xArg){
                 if(!at) return nullptr;
                 arrayAt->at = at;
                 arrayAt->parent = var;
-                x++;
-                var = (ASTVariable*)arrayAt;
+                arrayAt->child = nullptr;
+                x += 2;
+                if(childWriteLoc){*childWriteLoc = arrayAt;};
+                childWriteLoc = &arrayAt->child;
+            }else{
+                if(childWriteLoc){*childWriteLoc = var;};
             };
             if(root == nullptr){root = var;};
-            if(lastMod){lastMod->child = var;};
         };
     };
     if(childReq){
@@ -634,6 +638,7 @@ ASTBase* parseAssDecl(Lexer &lexer, ASTFile &file, u32 &xArg){
 bool parseBlock(Lexer &lexer, ASTFile &file, DynamicArray<ASTBase*> &table, u32 &xArg){
     BRING_TOKENS_TO_SCOPE;
     u32 x = xArg;
+    x = eatNewLine(tokTypes, x);
     DEFER({
         x = eatNewLine(tokTypes, x);
         xArg = x;
@@ -940,6 +945,10 @@ namespace dbg{
                 dumpASTNode(arrayAt->at, lexer, padding+1);
                 PLOG("parent:");
                 dumpASTNode(arrayAt->parent, lexer, padding+1);
+                if(arrayAt->child){
+                    PLOG("child:");
+                    dumpASTNode(arrayAt->child, lexer, padding+1);
+                };
             }break;
             case ASTType::INITIALIZER_LIST:{
                 ASTInitializerList *list = (ASTInitializerList*)node;

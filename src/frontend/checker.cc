@@ -18,28 +18,24 @@ struct StructEntity{
 struct Scope{
     HashmapStr var;
     DynamicArray<VariableEntity> vars;
-    HashmapStr struc;
-    DynamicArray<StructEntity> strucs;
     ScopeType type;
 
     void init(ScopeType stype){
         type = stype;
         var.init();
         vars.init();
-        struc.init();
-        strucs.init();
     };
     void uninit(){
-        strucs.uninit();
-        struc.uninit();
         vars.uninit();
         var.uninit();
     };
 };
 
-static Scope *globalScopes;
-static Scope *scopeAllocMem;
-static u32 scopeOff;
+static Scope *globalScopes;                //all file scopes
+static Scope *scopeAllocMem;               //all scopes
+static u32 scopeOff;                       //how many total scopes
+static HashmapStr struc;                   //all structs name to off
+static DynamicArray<StructEntity> strucs;  //all structs
 
 VariableEntity *getVariableEntity(ASTBase *node, DynamicArray<Scope*> &scopes){
     String name;
@@ -63,15 +59,14 @@ VariableEntity *getVariableEntity(ASTBase *node, DynamicArray<Scope*> &scopes){
     };
     return nullptr;
 };
-StructEntity *getStructEntity(ASTStruct *node, DynamicArray<Scope*> &scopes){
-    for(u32 x=scopes.count; x!=0;){
-        x -= 1;
-        Scope *scope = scopes[x];
-        u32 off;
-        if(!scope->struc.getValue(node->name, &off)) continue;
-        return &scope->strucs[x];
-    };
-    return nullptr;
+StructEntity *getStructEntity(String name){
+    u32 off;
+    if(!struc.getValue(name, &off)) return nullptr;
+    return &strucs[off];
+};
+StructEntity *getStructEntity(Type type){
+    if((u32)type > strucs.count) return nullptr;
+    return &strucs[(u32)type];
 };
 VariableEntity *createVariableEntity(ASTBase *node, Scope *scope){
     String name;
@@ -94,15 +89,51 @@ VariableEntity *createVariableEntity(ASTBase *node, Scope *scope){
 bool fillTypeInfo(Lexer &lexer, ASTTypeNode *node){
     BRING_TOKENS_TO_SCOPE;
     if(isType(tokTypes[node->tokenOff])){
-        node->zType = (Type)((u32)tokTypes[node->tokenOff] - (u32)TokType::K_TYPE_START);
+        node->zType = (Type)((u32)tokTypes[node->tokenOff] - (u32)TokType::K_TYPE_START + 1);  //+1 since Type::BOOL
         return true;
     };
     if(tokTypes[node->tokenOff] != TokType::IDENTIFIER){
         lexer.emitErr(tokOffs[node->tokenOff].off, "Expected a type or a structure name");
         return false;
     };
-    //TODO: structs
-    return false;
+    String name = makeStringFromTokOff(node->tokenOff, lexer);
+    u32 off;
+    if(!struc.getValue(name, &off)){
+        lexer.emitErr(tokOffs[node->tokenOff].off, "Structure not defined");
+        return false;
+    };
+    node->zType = (Type)off;
+    return true;
+};
+Type checkModifierChain(Lexer &lexer, ASTBase *root, VariableEntity *entity){
+    BRING_TOKENS_TO_SCOPE;
+    Type structType = entity->type;
+    StructEntity *structEntity = getStructEntity(structType);
+    Scope *structBodyScope = structEntity->body;
+    while(root){
+        switch(root->type){
+            case ASTType::MODIFIER:{
+                ASTModifier *mod = (ASTModifier*)root;
+                u32 off;
+                if(!structBodyScope->var.getValue(mod->name, &off)){
+                    lexer.emitErr(tokOffs[mod->tokenOff].off, "%.*s does not belong to the defined structure", mod->name.len, mod->name.mem);
+                    return Type::INVALID;
+                }
+                return checkModifierChain(lexer, mod->child, &structBodyScope->vars[off]);
+            }break;
+            //TODO: array_at
+            case ASTType::VARIABLE:{
+                ASTVariable *var = (ASTVariable*)root;
+                u32 off;
+                if(!structBodyScope->var.getValue(var->name, &off)){
+                    lexer.emitErr(tokOffs[var->tokenOff].off, "%.*s does not belong to the defined structure", var->name.len, var->name.mem);
+                    return Type::INVALID;
+                };
+                return structBodyScope->vars[off].type;
+            }break;
+        };
+    };
+    return Type::INVALID;
 };
 Type checkTree(Lexer &lexer, ASTBase *node, DynamicArray<Scope*> &scopes, u32 &pointerDepth){
     BRING_TOKENS_TO_SCOPE;
@@ -118,8 +149,22 @@ Type checkTree(Lexer &lexer, ASTBase *node, DynamicArray<Scope*> &scopes, u32 &p
         case ASTType::DECIMAL: return Type::COMP_DECIMAL;
         case ASTType::VARIABLE:{
             VariableEntity *entity = getVariableEntity(node, scopes);
+            if(entity == nullptr){
+                ASTVariable *var = (ASTVariable*)node;
+                lexer.emitErr(tokOffs[var->tokenOff].off, "Variable not defined");
+                return Type::INVALID;
+            };
             pointerDepth = entity->pointerDepth;
             return entity->type;
+        }break;
+        case ASTType::MODIFIER:{
+            ASTModifier *mod = (ASTModifier*)node;
+            VariableEntity *entity = getVariableEntity(node, scopes);
+            if(entity == nullptr){
+                lexer.emitErr(tokOffs[mod->tokenOff].off, "Variable not defined");
+                return Type::INVALID;
+            };
+            return checkModifierChain(lexer, mod->child, entity);
         }break;
         default:{
             if(node->type > ASTType::B_START && node->type < ASTType::B_END){
@@ -140,24 +185,6 @@ Type checkTree(Lexer &lexer, ASTBase *node, DynamicArray<Scope*> &scopes, u32 &p
         }break;
     };
     return Type::INVALID;
-};
-u64 getSize(Type type, DynamicArray<Scope*> &scopes){
-    switch(type){
-        case Type::S64:
-        case Type::U64:  return 64;
-        case Type::BOOL:
-        case Type::S32:
-        case Type::U32:  return 32;
-        case Type::S16:
-        case Type::U16:  return 16;
-        case Type::CHAR:
-        case Type::S8:
-        case Type::U8:   return 8;
-        default:{
-            //TODO:
-        }break;
-    };
-    return 0;
 };
 u64 checkAss(Lexer &lexer, ASTAssDecl *assdecl, DynamicArray<Scope*> &scopes){
     BRING_TOKENS_TO_SCOPE;
@@ -182,7 +209,24 @@ u64 checkAss(Lexer &lexer, ASTAssDecl *assdecl, DynamicArray<Scope*> &scopes){
             return 0;
         };
     };
-    u64 size = getSize(typeType, scopes);
+    u64 size;
+    switch(typeType){
+        case Type::S64:
+        case Type::U64:  size = 64;break;
+        case Type::BOOL:
+        case Type::S32:
+        case Type::U32:  size = 32;break;
+        case Type::S16:
+        case Type::U16:  size = 16;break;
+        case Type::CHAR:
+        case Type::S8:
+        case Type::U8:   size = 8;break;
+        default:{
+            ASSERT(assdecl->zType);
+            StructEntity *structEntity = getStructEntity(typeType);
+            size = structEntity->size;
+        }break;
+    };
     for(u32 x=0; x<assdecl->lhsCount; x++){
         ASTBase *lhsNode = assdecl->lhs[x];
         if(getVariableEntity(lhsNode, scopes)){
@@ -209,7 +253,6 @@ u64 checkAss(Lexer &lexer, ASTAssDecl *assdecl, DynamicArray<Scope*> &scopes){
     };
     return size;
 }
-
 bool checkScope(Lexer &lexer, ASTBase **nodes, u32 nodeCount, DynamicArray<Scope*> &scopes){
     BRING_TOKENS_TO_SCOPE;
     Scope *scope = scopes[scopes.count-1];
@@ -218,13 +261,13 @@ bool checkScope(Lexer &lexer, ASTBase **nodes, u32 nodeCount, DynamicArray<Scope
         switch(node->type){
             case ASTType::STRUCT:{
                 ASTStruct *Struct = (ASTStruct*)node;
-                if(getStructEntity(Struct, scopes)){
+                if(getStructEntity(Struct->name)){
                     lexer.emitErr(tokOffs[Struct->tokenOff].off, "Structure already defined");
                     return false;
                 };
-                u32 id = scope->strucs.count;
-                scope->struc.insertValue(Struct->name, id);
-                StructEntity *entity = &scope->strucs.newElem();
+                u32 id = strucs.count;
+                struc.insertValue(Struct->name, id);
+                StructEntity *entity = &strucs.newElem();
                 Scope *body = &scopeAllocMem[scopeOff++];
                 body->init(ScopeType::BLOCK);
                 entity->body = body;
@@ -248,13 +291,36 @@ bool checkScope(Lexer &lexer, ASTBase **nodes, u32 nodeCount, DynamicArray<Scope
                 scopes.pop();
             }break;
             case ASTType::DECLERATION:{
-                return checkAss(lexer, (ASTAssDecl*)node, scopes)>0;
+                if(checkAss(lexer, (ASTAssDecl*)node, scopes) == 0) return false;
+            }break;
+            case ASTType::ASSIGNMENT:{
+                ASTAssDecl *assdecl = (ASTAssDecl*)node;
+                u32 treePointerDepth;
+                Type treeType = checkTree(lexer, assdecl->rhs, scopes, treePointerDepth);
+                if(treeType == Type::INVALID) return false;
+                for(u32 x=0; x<assdecl->lhsCount; x++){
+                    ASTBase *node = assdecl->lhs[x];
+                    VariableEntity *entity = getVariableEntity(node, scopes);
+                    if(entity == nullptr){
+                        if(node->type == ASTType::VARIABLE || node->type == ASTType::MODIFIER){
+                                lexer.emitErr(tokOffs[assdecl->tokenOff].off, "Variable not defined in LHS(%d)", x);
+                                return false;
+                        };
+                        lexer.emitErr(tokOffs[assdecl->tokenOff].off, "Only variable or modifiers allowed in LHS");
+                        return false;
+                    };
+                    if(node->type == ASTType::MODIFIER){
+                        ASTModifier *mod = (ASTModifier*)node;
+                        if(checkModifierChain(lexer, mod->child, entity) == Type::INVALID) return false;
+                    };
+                };
             }break;
             case ASTType::IF:{
                 ASTIf *If = (ASTIf*)node;
                 u32 treePointerDepth;
                 Type treeType = checkTree(lexer, If->expr, scopes, treePointerDepth);
-                if(treeType == Type::INVALID || (treeType > Type::COUNT && treePointerDepth == 0)){
+                if(treeType == Type::INVALID) return false;
+                if(treeType > Type::COUNT && treePointerDepth == 0){
                     lexer.emitErr(tokOffs[If->exprTokenOff].off, "Invalid expression");
                     return false;
                 };
