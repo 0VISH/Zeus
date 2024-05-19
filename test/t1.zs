@@ -1,4 +1,1 @@
-#import "test/t2.zs"
-
-g: goo
-g.f.x = 2
+x: u32 = 2

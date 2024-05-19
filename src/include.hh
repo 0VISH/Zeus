@@ -16,7 +16,9 @@
 #include "threadPool.cc"
 
 #include "report.cc"
-#include "frontend/lexer.cc"
-#include "frontend/type.hh"
-#include "frontend/parser.cc"
-#include "frontend/checker.cc"
+#include "lexer.cc"
+#include "type.hh"
+#include "parser.cc"
+#include "checker.cc"
+
+#include "riscvAsm.cc"
