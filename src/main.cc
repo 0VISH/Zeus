@@ -29,6 +29,7 @@ s32 main(s32 argc, char **argv){
     linearDepStrings.init();
 
     FileEntity &mainFileEntity = linearDepEntities.newElem();
+
     mainFileEntity.lexer.init(inputPath);
     mainFileEntity.file.init();
 
@@ -76,7 +77,10 @@ s32 main(s32 argc, char **argv){
     scopeAllocMem = (Scope*)mem::alloc(sizeof(Scope)*1000);
     struc.init();
     strucs.init();
+    DynamicArray<ASTBase*> globals;
+    globals.init();
     DEFER({
+        globals.uninit();
         strucs.uninit();
         struc.uninit();
         for(u32 x=0; x<dependencyCount; x++){
@@ -97,7 +101,7 @@ s32 main(s32 argc, char **argv){
     for(u32 x=dependencyCount; x > 0;){
         x -= 1;
         FileEntity &fe = linearDepEntities[x];
-        if(!checkASTFile(fe.lexer, fe.file, globalScopes[x])){
+        if(!checkASTFile(fe.lexer, fe.file, globalScopes[x], globals)){
             report::flushReports();
             return EXIT_SUCCESS;
         };

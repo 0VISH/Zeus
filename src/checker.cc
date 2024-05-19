@@ -399,7 +399,7 @@ bool checkScope(Lexer &lexer, ASTBase **nodes, u32 nodeCount, DynamicArray<Scope
     };
     return true;
 };
-bool checkASTFile(Lexer &lexer, ASTFile &file, Scope &scope){
+bool checkASTFile(Lexer &lexer, ASTFile &file, Scope &scope, DynamicArray<ASTBase*> globals){
     scope.init(ScopeType::GLOBAL);
     DynamicArray<Scope*> scopes;
     scopes.init();
@@ -408,5 +408,40 @@ bool checkASTFile(Lexer &lexer, ASTFile &file, Scope &scope){
         scopes.push(&globalScopes[file.dependencies[x]]);
     };
     scopes.push(&scope);
-    return checkScope(lexer, file.nodes.mem, file.nodes.count, scopes);
+    bool res = checkScope(lexer, file.nodes.mem, file.nodes.count, scopes);
+    const u32 curOff = &scope - globalScopes;
+    for(u32 x=0; x<file.nodes.count; x++){
+        ASTBase *node = file.nodes[x];
+        switch(node->type){
+            case ASTType::PROC_DECL:
+            case ASTType::PROC_DEF:
+            case ASTType::STRUCT: break;
+            case ASTType::DECLERATION:{
+                ASTAssDecl *assdecl = (ASTAssDecl*)node;
+                if(assdecl->lhsCount > 1){
+                    lexer.emitErr(lexer.tokenOffsets[assdecl->tokenOff].off, "In the global scope, lhs count has to be 1");
+                    return false;
+                };
+                switch(assdecl->rhs->type){
+                    case ASTType::INTEGER:
+                    case ASTType::DECIMAL:
+                    case ASTType::STRING: break;
+                    default:{
+                        lexer.emitErr(lexer.tokenOffsets[assdecl->tokenOff].off, "In the global scope, rhs has to be an integer, decimal or a string. No expressions allowed");
+                        return false;
+                    }break;
+                };
+                for(u32 y=curOff+1; y<linearDepEntities.count; y++){
+                    u32 off;
+                    ASTVariable *var = (ASTVariable*)assdecl->lhs[0];
+                    if(globalScopes[y].var.getValue(var->name, &off)){
+                        lexer.emitErr(lexer.tokenOffsets[assdecl->tokenOff].off, "Variable already declared at global scope in %s", linearDepEntities[y].lexer.fileName);
+                        return false;
+                    };
+                };
+                globals.push(node);
+            }break;
+        };
+    };
+    return res;
 };

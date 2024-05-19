@@ -128,7 +128,11 @@ ASMBucket* lowerASTFile(ASTFile &file){
     ASMFile AsmFile;
     AsmFile.init();
     for(u32 x=0; x<file.nodes.count; x++){
-        lowerASTNode(file.nodes[x], AsmFile);
+        ASTBase *node = file.nodes[x];
+        switch(node->type){
+            case ASTType::ASSIGNMENT: break;
+            default: lowerASTNode(node, AsmFile);
+        };
     };
     ASMBucket *start = AsmFile.start;
     AsmFile.uninit();

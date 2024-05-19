@@ -606,6 +606,7 @@ ASTAssDecl* parseAssDecl(Lexer &lexer, ASTFile &file, u32 &xArg){
             lhs.uninit();
             return nullptr;
         }
+        x++;
         lhsCount++;
         lhs.push(var);
     };
