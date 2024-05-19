@@ -8,12 +8,15 @@
 #endif
 #if(WIN)
 #include "windows.h"
+#elif(LIN)
+#include <unistd.h>
+#include <fcntl.h>
 #endif
 
 #include "basic.hh"
 #include "mem.cc"
 #include "ds.cc"
-#include "threadPool.cc"
+//#include "threadPool.cc"
 
 #include "report.cc"
 #include "lexer.cc"

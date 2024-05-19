@@ -20,7 +20,7 @@ typedef unsigned long long int  b64;
 typedef float                   f32;
 typedef double                  f64;
 
-void unreachable(char *func, char *file, u32 line) {
+void unreachable(const char *func, char *file, u32 line) {
     printf("\n%s:%d(%s) unreachable area reached", file, line, func);
 };
 #define UNREACHABLE unreachable(__FUNCTION__, __FILE__, __LINE__)

@@ -24,7 +24,7 @@ struct Register{
     u32 gen;      //generation of area
 };
 struct ASMBucket{
-    char buffer[BUCKET_BUFFER_SIZE];
+    char buff[BUCKET_BUFFER_SIZE+1];    //+1 for null byte
     ASMBucket *next;
 };
 struct ASMFile{
@@ -49,32 +49,27 @@ struct ASMFile{
         cursor = 0;
         areas.init(10);
         start = (ASMBucket*)mem::alloc(sizeof(ASMBucket));
+        start->buff[BUCKET_BUFFER_SIZE] = '\0';
         start->next = nullptr;
         cur = start;
         memset(regs, -1, sizeof(Register)*25);
     };
-    void uninit(){
-        areas.uninit();
-        while(start){
-            ASMBucket *temp = start;
-            start = start->next;
-            mem::free(temp);
-        };
-    };
+    void uninit(){areas.uninit();};
     void write(char *fmt, ...){
         va_list args;
         va_start(args, fmt);
-        s32 res = vsnprintf(&cur->buffer[cursor], BUCKET_BUFFER_SIZE, fmt, args);
+        s32 res = vsnprintf(&cur->buff[cursor], BUCKET_BUFFER_SIZE, fmt, args);
         va_end(args);
         if(res + cursor >= BUCKET_BUFFER_SIZE){
-            cur->buffer[cursor] = '\0';
+            cur->buff[cursor] = '\0';
             ASMBucket *buc = (ASMBucket*)mem::alloc(sizeof(ASMBucket));
+            buc->buff[BUCKET_BUFFER_SIZE] = '\0';
             buc->next = nullptr;
             cursor = 0;
             cur->next = buc;
             cur = buc;
             va_start(args, fmt);
-            res = vsnprintf(cur->buffer, BUCKET_BUFFER_SIZE, fmt, args);
+            res = vsnprintf(cur->buff, BUCKET_BUFFER_SIZE, fmt, args);
             va_end(args);
         };
         cursor += res;
@@ -113,9 +108,10 @@ u32 lowerExpression(ASTBase *node, ASMFile &file){
             ASTNum *num = (ASTNum*)node;
             u32 reg = getOrCreateFreeRegister(file);
             setRegister(reg, file.areas.count-1, file);
-            file.write("li %lld\n", num->integer);
+            file.write("li x%d, %lld\n", reg, num->integer);
             return reg;
         }break;
+        default: UNREACHABLE;
     };
     return 0;
 };
@@ -123,17 +119,18 @@ void lowerASTNode(ASTBase *node, ASMFile &file){
     switch(node->type){
         case ASTType::DECLERATION:{
             ASTAssDecl *assdecl = (ASTAssDecl*)node;
-            u32 reg = lowerExpression(assdecl, file);
+            u32 reg = lowerExpression(assdecl->rhs, file);
 
         }break;
     };
 };
-void lowerASTFile(ASTFile &file, FILE *outFile){
+ASMBucket* lowerASTFile(ASTFile &file){
     ASMFile AsmFile;
     AsmFile.init();
     for(u32 x=0; x<file.nodes.count; x++){
         lowerASTNode(file.nodes[x], AsmFile);
     };
-    //TODO: write to file
+    ASMBucket *start = AsmFile.start;
     AsmFile.uninit();
+    return start;
 }

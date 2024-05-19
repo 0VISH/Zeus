@@ -102,5 +102,30 @@ s32 main(s32 argc, char **argv){
             return EXIT_SUCCESS;
         };
     };
+    char *start = ".section .text\n.global _zeus_main\n";
+    //no buffering please
+#if(WIN)
+    HANDLE file = CreateFile(outputPath, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+    DWORD bytesWritten = 0;
+    WriteFile(file, start, strlen(start), &bytesWritten, NULL);
+    DEFER(CloseHandle(file));
+#elif(LIN)
+    int file = open(outputPath, O_RDWR|O_CREAT);
+    DEFER(close(file));
+#endif
+    for(u32 x=dependencyCount; x > 0;){
+        x -= 1;
+        FileEntity &fe = linearDepEntities[x];
+        ASMBucket *buc = lowerASTFile(fe.file);
+        while(buc){
+#if(WIN)
+            WriteFile(file, buc->buff, strlen(buc->buff), &bytesWritten, NULL);
+#elif(LIN)
+            write(file, buc->buff, strlen(buc->buff));
+#endif
+            mem::free(buc);
+            buc = buc->next;
+        };
+    };
     return EXIT_SUCCESS;
 };
