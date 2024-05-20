@@ -82,6 +82,8 @@ struct ASMFile{
     };
 };
 
+static HashmapStr stringToId;
+
 void store(u32 x, ASMFile &file){
     VarInfo info = file.areas[file.regs[x].gen].infos[x];
     file.write("%s x%d, %d(x5)", info.dw?"sd":"sw", x+START_FREE_REG, info.off);
@@ -165,13 +167,21 @@ void lowerToRISCV(char *outputPath, DynamicArray<ASTBase*> &globals){
         int temp;
 GLOBAL_WRITE_ASM_TO_BUFF:
         switch(assdecl->rhs->type){
-            case ASTType::CHARACTER:{
-                if(var->entity->pointerDepth == 0){
-                    ASTNum *num = (ASTNum*)assdecl->rhs;
-                    temp = snprintf(buff+cursor, BUFF_SIZE, ".%.*s: .byte %d\n", var->name.len, var->name.mem, (u8)num->integer);
+            case ASTType::STRING:{
+                ASTString *str = (ASTString*)assdecl->rhs;
+                u32 off;
+                if(!stringToId.getValue(str->str, &off)){
+                    off = stringToId.count;
+                    temp = snprintf(buff+cursor, BUFF_SIZE, "_S%d: .ascii \"%.*s\"\n%.*s: .dword _S%d\n",
+                                    off, str->str.len, str->str.mem, var->name.len, var->name.mem, off);
+                    stringToId.insertValue(str->str, off);
                 }else{
-
+                    temp = snprintf(buff+cursor, BUFF_SIZE, "%.*s: .dword _S%d\n", var->name.len, var->name.mem, off);
                 };
+            }break;
+            case ASTType::CHARACTER:{
+                ASTNum *num = (ASTNum*)assdecl->rhs;
+                temp = snprintf(buff+cursor, BUFF_SIZE, ".%.*s: .byte %d\n", var->name.len, var->name.mem, (u8)num->integer);
             }break;
             case ASTType::INTEGER:{
                 ASTNum *num = (ASTNum*)assdecl->rhs;

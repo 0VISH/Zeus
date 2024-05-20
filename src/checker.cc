@@ -155,6 +155,7 @@ Type checkTree(Lexer &lexer, ASTBase *node, DynamicArray<Scope*> &scopes, u32 &p
         case ASTType::BOOL:      return Type::BOOL;
         case ASTType::INTEGER:   return Type::COMP_INTEGER;
         case ASTType::DECIMAL:   return Type::COMP_DECIMAL;
+        case ASTType::STRING:    return Type::COMP_STRING;
         case ASTType::VARIABLE:{
             VariableEntity *entity = getVariableEntity(node, scopes);
             if(entity == nullptr){
@@ -224,6 +225,7 @@ u64 checkDecl(Lexer &lexer, ASTAssDecl *assdecl, DynamicArray<Scope*> &scopes){
     };
     u64 size;
     switch(typeType){
+        case Type::COMP_STRING:
         case Type::COMP_DECIMAL:
         case Type::COMP_INTEGER:
         case Type::S64:
@@ -422,7 +424,7 @@ bool checkASTFile(Lexer &lexer, ASTFile &file, Scope &scope, DynamicArray<ASTBas
     scopes.push(&scope);
     bool res = checkScope(lexer, file.nodes.mem, file.nodes.count, scopes);
     const u32 curOff = &scope - globalScopes;
-    for(u32 x=0; x<file.nodes.count; x++){
+    for(u32 x=0; x<file.nodes.count;){
         ASTBase *node = file.nodes[x];
         switch(node->type){
             case ASTType::PROC_DECL:
@@ -455,6 +457,7 @@ bool checkASTFile(Lexer &lexer, ASTFile &file, Scope &scope, DynamicArray<ASTBas
                 globals.push(node);
                 ASTBase *lastNode = file.nodes.pop();
                 if(lastNode != node) file.nodes[x] = lastNode;
+                else x++;
             }break;
         };
     };

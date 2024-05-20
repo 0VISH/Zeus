@@ -12,9 +12,6 @@
 #include "include.hh"
 
 s32 main(s32 argc, char **argv){
-#if(DBG)
-    DEFER(printf("\nDone :)\n"));
-#endif
     if(argc < 2){
         printf("no entryfile provided\n");
         return EXIT_SUCCESS;
@@ -89,6 +86,7 @@ s32 main(s32 argc, char **argv){
         mem::free(globalScopes);
         for(u32 x=0; x<scopeOff; x++) scopeAllocMem[x].uninit();
         mem::free(scopeAllocMem);
+        printf("\nDone :)\n");
     });
 #if(DBG)
     for(u32 x=0; x<dependencyCount; x++){
@@ -106,6 +104,8 @@ s32 main(s32 argc, char **argv){
             return EXIT_SUCCESS;
         };
     };
+    stringToId.init();
     lowerToRISCV(outputPath, globals);
+    stringToId.uninit();
     return EXIT_SUCCESS;
 };
