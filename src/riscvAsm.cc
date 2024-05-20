@@ -49,24 +49,31 @@ struct ASMFile{
     (x6,x31) -> 25 free regs
     */
     Register regs[REGS];
+    u32 off;                   //off from fp
     u32 cursor;                //cursor for ASMBucket buffer
 
     void init(){
+        off = 0;
         cursor = 0;
         areas.init(10);
+        Area &fileArea = areas.newElem();
+        fileArea.init();
         start = (ASMBucket*)mem::alloc(sizeof(ASMBucket));
         start->buff[BUCKET_BUFFER_SIZE] = '\0';
         start->next = nullptr;
         cur = start;
         memset(regs, -1, sizeof(Register)*25);
     };
-    void uninit(){areas.uninit();};
+    void uninit(){
+        for(u32 x=0; x<areas.count; x++) areas[x].uninit();
+        areas.uninit();
+    };
     void write(char *fmt, ...){
         va_list args;
         va_start(args, fmt);
         s32 res = vsnprintf(&cur->buff[cursor], BUCKET_BUFFER_SIZE, fmt, args);
         va_end(args);
-        if(res + cursor >= BUCKET_BUFFER_SIZE){
+        if(res + cursor + 1 >= BUCKET_BUFFER_SIZE){
             cur->buff[cursor] = '\0';
             ASMBucket *buc = (ASMBucket*)mem::alloc(sizeof(ASMBucket));
             buc->buff[BUCKET_BUFFER_SIZE] = '\0';
@@ -79,6 +86,8 @@ struct ASMFile{
             va_end(args);
         };
         cursor += res;
+        cur->buff[cursor++] = '\n';
+        cur->buff[cursor] = '\0';
     };
 };
 
@@ -116,7 +125,7 @@ u32 lowerExpression(ASTBase *node, ASMFile &file){
             ASTNum *num = (ASTNum*)node;
             u32 reg = getOrCreateFreeRegister(file);
             setRegister(reg, file.areas.count-1, file);
-            file.write("li x%d, %lld\n", reg, num->integer);
+            file.write("li x%d, %lld", reg+START_FREE_REG, num->integer);
             return reg;
         }break;
         default: UNREACHABLE;
@@ -128,7 +137,14 @@ void lowerASTNode(ASTBase *node, ASMFile &file){
         case ASTType::DECLERATION:{
             ASTAssDecl *assdecl = (ASTAssDecl*)node;
             u32 reg = lowerExpression(assdecl->rhs, file);
-
+            Area &curArea = file.areas[file.areas.count-1];
+            //TODO: many elem in lhs
+            ASTVariable *var = (ASTVariable*)assdecl->lhs[0];
+            curArea.varToOff.insertValue(var->name, curArea.infos.count-1);
+            VarInfo &info = curArea.infos.newElem();
+            info.off = file.off;
+            info.dw = (var->entity->size > 32 || var->entity->pointerDepth > 0) ? true:false;
+            file.off += (var->entity->pointerDepth > 0) ? 64:var->entity->size;
         }break;
     };
 };
