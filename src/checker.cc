@@ -399,7 +399,7 @@ bool checkScope(Lexer &lexer, ASTBase **nodes, u32 nodeCount, DynamicArray<Scope
     };
     return true;
 };
-bool checkASTFile(Lexer &lexer, ASTFile &file, Scope &scope, DynamicArray<ASTBase*> globals){
+bool checkASTFile(Lexer &lexer, ASTFile &file, Scope &scope, DynamicArray<ASTBase*> &globals){
     scope.init(ScopeType::GLOBAL);
     DynamicArray<Scope*> scopes;
     scopes.init();
@@ -440,6 +440,8 @@ bool checkASTFile(Lexer &lexer, ASTFile &file, Scope &scope, DynamicArray<ASTBas
                     };
                 };
                 globals.push(node);
+                ASTBase *lastNode = file.nodes.pop();
+                if(lastNode != node) file.nodes[x] = lastNode;
             }break;
         };
     };

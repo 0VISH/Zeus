@@ -2,6 +2,12 @@
 #define REGS 25
 #define START_FREE_REG 6
 
+#if(WIN)
+#define WRITE(file, buff, len) WriteFile(file, buff, len, nullptr, NULL)
+#elif(LIN)
+#define WRITE(file, buff, len) write(file, buff, len)
+#endif
+
 struct VarInfo{
     u32 off;    //offset from fp
     bool dw;    //dw or w?
@@ -137,4 +143,53 @@ ASMBucket* lowerASTFile(ASTFile &file){
     ASMBucket *start = AsmFile.start;
     AsmFile.uninit();
     return start;
-}
+};
+
+void lowerToRISCV(char *outputPath, DynamicArray<ASTBase*> &globals){
+    //no buffering please
+#if(WIN)
+    HANDLE file = CreateFile(outputPath, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+    DEFER(CloseHandle(file));
+#elif(LIN)
+    int file = open(outputPath, O_RDWR|O_CREAT);
+    DEFER(close(file));
+#endif
+    const u32 BUFF_SIZE = 1024;
+    char buff[BUFF_SIZE];
+    char *start = ".global _zeus_main\n.section data\n";
+    u32 cursor = snprintf(buff, BUFF_SIZE, "%s", start);
+    for(u32 x=0; x<globals.count; x++){
+        //TODO: strings
+        ASTAssDecl *assdecl = (ASTAssDecl*)globals[x];
+        ASTVariable *var = (ASTVariable*)assdecl->lhs[0];
+        int temp;
+GLOBAL_WRITE_ASM_TO_BUFF:
+        switch(assdecl->rhs->type){
+            case ASTType::INTEGER:{
+                ASTNum *num = (ASTNum*)assdecl->rhs;
+                //TODO: not always a word
+                temp = snprintf(buff+cursor, BUFF_SIZE, ".%.*s: .word %lld\n", var->name.len, var->name.mem, num->integer);
+            }break;
+        };
+        if(temp + cursor >= 1024){
+            WRITE(file, buff, cursor);
+            cursor = 0;
+            goto GLOBAL_WRITE_ASM_TO_BUFF;
+        };
+        cursor += temp;
+    };
+    if(cursor) WRITE(file, buff, cursor);
+    char *textSection = ".section text\n";
+    WRITE(file, textSection, strlen(textSection));
+    for(u32 x=linearDepEntities.count; x > 0;){
+        x -= 1;
+        FileEntity &fe = linearDepEntities[x];
+        if(fe.file.nodes.count == 0) continue;
+        ASMBucket *buc = lowerASTFile(fe.file);
+        while(buc){
+            WRITE(file, buc->buff, strlen(buc->buff));
+            mem::free(buc);
+            buc = buc->next;
+        };
+    };
+};
