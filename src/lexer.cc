@@ -183,23 +183,17 @@ struct Lexer {
                 tokenOffsets.push(offset);
             }break;
             case '\'':{
-                u32 start = x+1;
-            SINGLE_QUOTE_FIND_END:
                 x += 1;
-                while(src[x] != '\''){
-                    x += 1;
-                    if(src[x] == '\0' || src[x] == '\n'){
-                        emitErr(start, "Expected ending single quotes");
-                        return false;
-                    };
+                if(src[x+1] != '\''){
+                    emitErr(x-1, "Expected ending single quotes");
+                    return false;
                 };
-                if(src[x-1] == '\\') goto SINGLE_QUOTE_FIND_END;
                 tokenTypes.push(TokType::SINGLE_QUOTES);
                 TokenOffset offset;
-                offset.off = start;
-                offset.len = (u16)(x-start);
+                offset.off = x;
+                offset.len = 1;
                 tokenOffsets.push(offset);
-                x++;
+                x += 2;
             } break;
             case '\"':{
                 u32 start = x+1;

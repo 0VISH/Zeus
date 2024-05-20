@@ -5,6 +5,7 @@ enum class ASTType{
     DECLERATION,
     ASSIGNMENT,
     INTEGER,
+    CHARACTER,
     DECIMAL,
     BOOL,
     TYPE,
@@ -18,7 +19,6 @@ enum class ASTType{
     PROC_CALL,
     INITIALIZER_LIST,
     STRING,
-    CHAR,
     ARRAY_AT,
 
     B_START,  //binary operators start
@@ -39,6 +39,7 @@ enum class ASTType{
     U_END,    //unary operators end
 };
 
+struct VariableEntity;
 struct ASTBase{
     ASTType type;
 };
@@ -71,6 +72,7 @@ struct ASTNum : ASTBase{
         s64  integer;
         f64  decimal;
         bool isTrue;
+        char character;
     };
 };
 struct ASTIf : ASTBase{
@@ -114,13 +116,19 @@ struct ASTStruct : ASTBase{
 };
 struct ASTVariable : ASTBase{
     String name;
-    u32 tokenOff;
+    union{
+        u32 tokenOff;
+        VariableEntity *entity;
+    };
     u8 pAccessDepth;
 };
 struct ASTModifier : ASTBase{
     String name;
     ASTBase *child;
-    u32 tokenOff;
+    union{
+        u32 tokenOff;
+        VariableEntity *entity;
+    };
     u8 pAccessDepth;
 };
 struct ASTProcCall : ASTBase{
@@ -366,16 +374,6 @@ ASTBase* _genASTExprTree(Lexer &lexer, ASTFile &file, u32 &xArg, u8 &bracketArg)
             num->isTrue = (tokTypes[x] == TokType::K_TRUE)?true:false;
             lhs = num;
         }break;
-        case TokType::DOUBLE_QUOTES:{
-            ASTString *str = (ASTString*)file.newNode(sizeof(ASTString), ASTType::STRING);
-            str->str = makeStringFromTokOff(x, lexer);
-            lhs = str;
-        }break;
-        case TokType::SINGLE_QUOTES:{
-            ASTString *str = (ASTString*)file.newNode(sizeof(ASTString), ASTType::CHAR);
-            str->str = makeStringFromTokOff(x, lexer);
-            lhs = str;
-        }break;
         case TokType::IDENTIFIER:{
             if(tokTypes[x+1] == (TokType)'('){
                 ASTProcCall *pcall = (ASTProcCall*)file.newNode(sizeof(ASTProcCall), ASTType::PROC_CALL);
@@ -493,38 +491,52 @@ ASTBase* genASTExprTree(Lexer &lexer, ASTFile &file, u32 &xArg){
     BRING_TOKENS_TO_SCOPE;
     u8 bracket = 0;
     u32 start = xArg;
-    if(tokTypes[xArg] == (TokType)'{'){
-        //initializer list
-        u32 x = xArg;
-        DEFER(xArg = x);
-        x++;
-        DynamicArray<ASTBase*> elements;
-        elements.init();
-        while(true){
-            ASTBase *node = genASTExprTree(lexer, file, x);
-            if(!node){
-                elements.uninit();
-                return nullptr;
-            }
-            elements.push(node);
-            if(tokTypes[x] == (TokType)'}') break;
-            if(tokTypes[x] != (TokType)','){
-                lexer.emitErr(tokOffs[x].off, "Expected ','");
-                elements.uninit();
-                return nullptr;
+    switch(tokTypes[xArg]){
+        case (TokType)'{':{
+            //initializer list
+            u32 x = xArg;
+            DEFER(xArg = x);
+            x++;
+            DynamicArray<ASTBase*> elements;
+            elements.init();
+            while(true){
+                ASTBase *node = genASTExprTree(lexer, file, x);
+                if(!node){
+                    elements.uninit();
+                    return nullptr;
+                }
+                elements.push(node);
+                if(tokTypes[x] == (TokType)'}') break;
+                if(tokTypes[x] != (TokType)','){
+                    lexer.emitErr(tokOffs[x].off, "Expected ','");
+                    elements.uninit();
+                    return nullptr;
+                };
+                x++;
             };
             x++;
-        };
-        x++;
-        u32 size = sizeof(ASTBase*)*elements.count;
-        ASTBase **elementNodes = (ASTBase**)file.balloc(size);
-        memcpy(elementNodes, elements.mem, size);
-        ASTInitializerList *list = (ASTInitializerList*)file.newNode(sizeof(ASTInitializerList), ASTType::INITIALIZER_LIST);
-        list->elements = elementNodes;
-        list->elementCount = elements.count;
-        elements.uninit();
-        return list;
-    }
+            u32 size = sizeof(ASTBase*)*elements.count;
+            ASTBase **elementNodes = (ASTBase**)file.balloc(size);
+            memcpy(elementNodes, elements.mem, size);
+            ASTInitializerList *list = (ASTInitializerList*)file.newNode(sizeof(ASTInitializerList), ASTType::INITIALIZER_LIST);
+            list->elements = elementNodes;
+            list->elementCount = elements.count;
+            elements.uninit();
+            return list;
+        }break;
+        case TokType::DOUBLE_QUOTES:{
+            ASTString *str = (ASTString*)file.newNode(sizeof(ASTString), ASTType::STRING);
+            str->str = makeStringFromTokOff(xArg, lexer);
+            xArg++;
+            return str;
+        }break;
+        case TokType::SINGLE_QUOTES:{
+            ASTNum *character = (ASTNum*)file.newNode(sizeof(ASTNum), ASTType::CHARACTER);
+            character->character = (char)lexer.fileContent[tokOffs[xArg].off];
+            xArg++;
+            return character;
+        }break;
+    };
     ASTBase *tree = _genASTExprTree(lexer, file, xArg, bracket);
     if(bracket != 0){
         lexer.emitErr(tokOffs[start].off, "Expected %d closing bracket%sin this expression", bracket, (bracket==1)?" ":"s ");
@@ -934,10 +946,14 @@ namespace dbg{
                 printf("bool");
                 PLOG("value: %s", (num->isTrue)?"true":"false");
             }break;
-            case ASTType::CHAR: printf("char"); hasNotDumped = false;
+            case ASTType::CHARACTER:{
+                ASTNum *num = (ASTNum*)node;
+                printf("character");
+                PLOG("value: \'%c\'(%d)", num->character, (u8)num->character);
+            }break;
             case ASTType::STRING:{
                 ASTString *str = (ASTString*)node;
-                if(hasNotDumped) printf("string");
+                printf("string");
                 PLOG("value: %.*s", str->str.len, str->str.mem);
             }break;
             case ASTType::ARRAY_AT:{

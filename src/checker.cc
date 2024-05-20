@@ -151,9 +151,10 @@ Type checkTree(Lexer &lexer, ASTBase *node, DynamicArray<Scope*> &scopes, u32 &p
         node = unOp->child;
     };
     switch(node->type){
-        case ASTType::BOOL:    return Type::BOOL;
-        case ASTType::INTEGER: return Type::COMP_INTEGER;
-        case ASTType::DECIMAL: return Type::COMP_DECIMAL;
+        case ASTType::CHARACTER: return Type::CHAR;
+        case ASTType::BOOL:      return Type::BOOL;
+        case ASTType::INTEGER:   return Type::COMP_INTEGER;
+        case ASTType::DECIMAL:   return Type::COMP_DECIMAL;
         case ASTType::VARIABLE:{
             VariableEntity *entity = getVariableEntity(node, scopes);
             if(entity == nullptr){
@@ -196,7 +197,7 @@ Type checkTree(Lexer &lexer, ASTBase *node, DynamicArray<Scope*> &scopes, u32 &p
 u64 checkDecl(Lexer &lexer, ASTAssDecl *assdecl, DynamicArray<Scope*> &scopes){
     BRING_TOKENS_TO_SCOPE;
     u32 typePointerDepth;
-    Type typeType;
+    Type typeType = Type::INVALID;
     if(assdecl->zType){
         if(!fillTypeInfo(lexer, assdecl->zType)) return 0;
         ASTTypeNode *type = assdecl->zType;
@@ -207,17 +208,24 @@ u64 checkDecl(Lexer &lexer, ASTAssDecl *assdecl, DynamicArray<Scope*> &scopes){
         u32 treePointerDepth;
         Type treeType = checkTree(lexer, assdecl->rhs, scopes, treePointerDepth);
         if(treeType == Type::INVALID) return 0;
-        if(treePointerDepth != typePointerDepth){
-            lexer.emitErr(tokOffs[assdecl->tokenOff].off, "Expression tree pointer depth is not equal to type pointer depth");
-            return 0;
-        };
-        if(treeType < typeType){
-            lexer.emitErr(tokOffs[assdecl->tokenOff].off, "Explicit cast required");
-            return 0;
+        if(typeType != Type::INVALID){
+            if(treePointerDepth != typePointerDepth){
+                lexer.emitErr(tokOffs[assdecl->tokenOff].off, "Expression tree pointer depth is not equal to type pointer depth");
+                return 0;
+            };
+            if(treeType < typeType){
+                lexer.emitErr(tokOffs[assdecl->tokenOff].off, "Explicit cast required");
+                return 0;
+            };
+        }else{
+            typeType = treeType;
+            typePointerDepth = treePointerDepth;
         };
     };
     u64 size;
     switch(typeType){
+        case Type::COMP_DECIMAL:
+        case Type::COMP_INTEGER:
         case Type::S64:
         case Type::U64:  size = 64;break;
         case Type::BOOL:
@@ -258,20 +266,24 @@ u64 checkDecl(Lexer &lexer, ASTAssDecl *assdecl, DynamicArray<Scope*> &scopes){
         };
         String name;
         Scope *scope = scopes[scopes.count-1];
+        VariableEntity **writeTo;
         switch(lhsNode->type){
             case ASTType::VARIABLE:{
                 ASTVariable *var = (ASTVariable*)lhsNode;
                 name = var->name;
+                writeTo = &var->entity;
             }break;
             case ASTType::MODIFIER:{
                 ASTModifier *mod = (ASTModifier*)lhsNode;
                 name = mod->name;
+                writeTo = &mod->entity;
             }break;
             default: return 0;
         }
         u32 id = scope->vars.count;
         scope->var.insertValue(name, id);
         VariableEntity *entity = &scope->vars.newElem();
+        *writeTo = entity;
         entity->pointerDepth = typePointerDepth;
         entity->type = typeType;
         if(typePointerDepth > 0) entity->size = 64;
@@ -425,9 +437,10 @@ bool checkASTFile(Lexer &lexer, ASTFile &file, Scope &scope, DynamicArray<ASTBas
                 switch(assdecl->rhs->type){
                     case ASTType::INTEGER:
                     case ASTType::DECIMAL:
+                    case ASTType::CHARACTER:
                     case ASTType::STRING: break;
                     default:{
-                        lexer.emitErr(lexer.tokenOffsets[assdecl->tokenOff].off, "In the global scope, rhs has to be an integer, decimal or a string. No expressions allowed");
+                        lexer.emitErr(lexer.tokenOffsets[assdecl->tokenOff].off, "In the global scope, rhs has to be an integer, decimal, character or a string. No expressions allowed");
                         return false;
                     }break;
                 };

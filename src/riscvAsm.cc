@@ -165,10 +165,19 @@ void lowerToRISCV(char *outputPath, DynamicArray<ASTBase*> &globals){
         int temp;
 GLOBAL_WRITE_ASM_TO_BUFF:
         switch(assdecl->rhs->type){
+            case ASTType::CHARACTER:{
+                if(var->entity->pointerDepth == 0){
+                    ASTNum *num = (ASTNum*)assdecl->rhs;
+                    temp = snprintf(buff+cursor, BUFF_SIZE, ".%.*s: .byte %d\n", var->name.len, var->name.mem, (u8)num->integer);
+                }else{
+
+                };
+            }break;
             case ASTType::INTEGER:{
                 ASTNum *num = (ASTNum*)assdecl->rhs;
-                //TODO: not always a word
-                temp = snprintf(buff+cursor, BUFF_SIZE, ".%.*s: .word %lld\n", var->name.len, var->name.mem, num->integer);
+                bool dw = false;
+                if(var->entity->size > 32 || var->entity->pointerDepth > 0) dw = true;
+                temp = snprintf(buff+cursor, BUFF_SIZE, ".%.*s: .%s %lld\n", var->name.len, var->name.mem, dw?"dword":"word", num->integer);
             }break;
         };
         if(temp + cursor >= 1024){
