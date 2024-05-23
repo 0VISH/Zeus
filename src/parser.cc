@@ -198,6 +198,8 @@ struct FileEntity{
 static DynamicArray<FileEntity> linearDepEntities;
 static DynamicArray<String> linearDepStrings;
 //------------DEPENDENCY-SYSTEM-----------------------
+//POUND-SUPPORT
+static f32 pStackSize = 1;  //mb
 
 //TODO: Hacked together af. REWRITE(return u64)
 s64 string2int(const String &str){
@@ -225,6 +227,16 @@ s64 string2int(const String &str){
     };
     return num;
 }
+f64 string2float(const String &str){
+    u32 decimal = 0;
+    while(str[decimal] != '.'){decimal += 1;};
+    u32 postDecimalBadChar = 0;
+    for(u32 x=decimal+1; x<str.len; x+=1){
+    	if(str[x] == '_'){postDecimalBadChar += 1;};
+    };
+    s64 num = string2int(str);
+    return (f64)num/pow(10, str.len-decimal-1-postDecimalBadChar);
+};
 String makeStringFromTokOff(u32 x, Lexer &lexer){
     BRING_TOKENS_TO_SCOPE;
     TokenOffset off = tokOffs[x];
@@ -356,16 +368,9 @@ ASTBase* _genASTExprTree(Lexer &lexer, ASTFile &file, u32 &xArg, u8 &bracketArg)
             lhs = num;
         }break;
         case TokType::DECIMAL:{
-            String str = makeStringFromTokOff(x, lexer);
-            u32 decimal = 0;
-            while(str[decimal] != '.'){decimal += 1;};
-            u32 postDecimalBadChar = 0;
-            for(u32 x=decimal+1; x<str.len; x+=1){
-                if(str[x] == '_'){postDecimalBadChar += 1;};
-            };
-            s64 number = string2int(str);
+            f64 value = string2float(makeStringFromTokOff(x, lexer));
             ASTNum *num = (ASTNum*)file.newNode(sizeof(ASTNum), ASTType::DECIMAL);
-            num->decimal = (f64)number/pow(10, str.len-decimal-1-postDecimalBadChar);
+            num->decimal = value;
             lhs = num;
         }break;
         case TokType::K_FALSE:
@@ -658,9 +663,24 @@ bool parseBlock(Lexer &lexer, ASTFile &file, DynamicArray<ASTBase*> &table, u32 
     });
     u32 start = x;
     switch(tokTypes[x]){
-        case TokType::P_IMPORT:{
+        case TokType::P_STACK_SIZE:{
+            if(tokTypes[++x] != (TokType)'='){
+                lexer.emitErr(tokOffs[x].off, "Expected a '='");
+                return false;
+            };
+            if(tokTypes[++x] == TokType::INTEGER){
+                pStackSize = (f32)string2int(makeStringFromTokOff(x, lexer));
+            }
+            else if(tokTypes[x] == TokType::DECIMAL){
+                pStackSize = (f32)string2float(makeStringFromTokOff(x, lexer));
+            }else{
+                lexer.emitErr(tokOffs[x].off, "Expected an integer or a decimal");
+                return false;
+            };
             x++;
-            if(tokTypes[x] != TokType::DOUBLE_QUOTES){
+        }break;
+        case TokType::P_IMPORT:{
+            if(tokTypes[++x] != TokType::DOUBLE_QUOTES){
                 lexer.emitErr(tokOffs[x].off, "Expected a string");
                 return false;
             };
@@ -694,13 +714,11 @@ bool parseBlock(Lexer &lexer, ASTFile &file, DynamicArray<ASTBase*> &table, u32 
                     lexer.emitErr(tokOffs[x].off, "Expected '...'");
                     return false;
                 }
-                x++;
-                node = genASTExprTree(lexer, file, x);
+                node = genASTExprTree(lexer, file, ++x);
                 if(!node) return false;
                 For->end = node;
                 if(tokTypes[x] == TokType::DDOT){
-                    x++;
-                    node = genASTExprTree(lexer, file, x);
+                    node = genASTExprTree(lexer, file, ++x);
                     if(!node) return false;
                     For->step = node;
                 }else For->step = nullptr;
@@ -724,9 +742,8 @@ bool parseBlock(Lexer &lexer, ASTFile &file, DynamicArray<ASTBase*> &table, u32 
             table.push(For);
         }break;
         case TokType::K_IF:{
-            x++;
             ASTIf *If = (ASTIf*)file.newNode(sizeof(ASTIf), ASTType::IF);
-            If->exprTokenOff = x;
+            If->exprTokenOff = ++x;
             ASTBase *expr = genASTExprTree(lexer, file, x);
             if(!expr) return false;
             If->expr = expr;
@@ -737,8 +754,7 @@ bool parseBlock(Lexer &lexer, ASTFile &file, DynamicArray<ASTBase*> &table, u32 
             If->ifBody = bodyNodes;
             If->ifBodyCount = count;
             if(tokTypes[x] == TokType::K_ELSE){
-                x++;
-                if(tokTypes[x] == TokType::K_IF){
+                if(tokTypes[++x] == TokType::K_IF){
                     //else if
                     DynamicArray<ASTBase*> elseIfBody;
                     elseIfBody.init();
@@ -767,28 +783,25 @@ bool parseBlock(Lexer &lexer, ASTFile &file, DynamicArray<ASTBase*> &table, u32 
                 x += 2;
                 switch(tokTypes[x]){
                     case TokType::K_STRUCT:{
-                        x++;
                         ASTStruct *Struct = (ASTStruct*)file.newNode(sizeof(ASTStruct), ASTType::STRUCT);
                         Struct->name = makeStringFromTokOff(start, lexer);
                         Struct->tokenOff = start;
                         u32 count;
-                        ASTBase **body = parseBody(lexer, file, x, count);
+                        ASTBase **body = parseBody(lexer, file, ++x, count);
                         if(!body) return false;
                         Struct->body = body;
                         Struct->bodyCount = count;
                         table.push(Struct);
                     }break;
                     case TokType::K_PROC:{
-                        x++;
-                        if(tokTypes[x] != (TokType)'('){
+                        if(tokTypes[++x] != (TokType)'('){
                             lexer.emitErr(tokOffs[x].off, "Expected '('");
                             return false;
                         };
                         ASTProcDefDecl *proc = (ASTProcDefDecl*)file.newNode(sizeof(ASTProcDefDecl), ASTType::PROC_DEF);
                         proc->name = makeStringFromTokOff(start, lexer);
                         proc->tokenOff = start;
-                        x++;
-                        if(tokTypes[x] == (TokType)')'){proc->inputCount = 0;}
+                        if(tokTypes[++x] == (TokType)')'){proc->inputCount = 0;}
                         else{
                             DynamicArray<ASTAssDecl*> inputs;
                             inputs.init();
@@ -813,16 +826,13 @@ bool parseBlock(Lexer &lexer, ASTFile &file, DynamicArray<ASTBase*> &table, u32 
                             proc->inputCount = inputs.count;
                             inputs.uninit();
                         };
-                        x++;
-                        if(tokTypes[x] == (TokType)'-'){
-                            x++;
-                            if(tokTypes[x] != (TokType)'>'){
+                        if(tokTypes[++x] == (TokType)'-'){
+                            if(tokTypes[++x] != (TokType)'>'){
                                 lexer.emitErr(tokOffs[x].off, "Expected '>'");
                                 return false;
                             }
-                            x++;
                             bool bracket = false;
-                            if(tokTypes[x] == (TokType)'('){
+                            if(tokTypes[++x] == (TokType)'('){
                                 bracket = true;
                                 x++;
                             };

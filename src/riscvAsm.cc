@@ -39,12 +39,13 @@ struct ASMFile{
     ASMBucket *cur;
     /*
     NOTE: we do not follow RISC-V register convention
-    new convention is
+    ----------FOLLOWING OLD CONVENTION----------
     x0 -> hard 0
     x1 -> ra(return address)
     x2 -> sp(stack pointer)
     x3 -> gp(global pointer)
     x4 -> tp(thread pointer)
+    ----------NEW CONVENTION STARTS HERE----------
     x5 -> fp(frame pointer)
     (x6,x31) -> 25 free regs
     */
@@ -91,8 +92,6 @@ struct ASMFile{
     };
 };
 
-static HashmapStr stringToId;
-
 void store(u32 x, ASMFile &file){
     VarInfo info = file.areas[file.regs[x].gen].infos[x];
     file.write("%s x%d, %d(x5)", info.dw?"sd":"sw", x+START_FREE_REG, info.off);
@@ -134,6 +133,21 @@ u32 lowerExpression(ASTBase *node, ASMFile &file){
 };
 void lowerASTNode(ASTBase *node, ASMFile &file){
     switch(node->type){
+        case ASTType::PROC_DEF:{
+            ASTProcDefDecl *proc = (ASTProcDefDecl*)node;
+            file.write("%.*s:", proc->name.len, proc->name.mem);
+            u32 stackSize = 0;
+            if(cmpString(proc->name, "main")){
+                stackSize = (u32)(pStackSize * 1000);
+                file.write("li x6, %d\nsub sp, sp, x6", stackSize);
+            };
+            for(u32 x=0; x<proc->bodyCount; x++){
+                lowerASTNode(proc->body[x], file);
+            };
+            if(stackSize != 0){
+                file.write("li x6, %d\nadd sp, sp, x6", stackSize);
+            };
+        }break;
         case ASTType::DECLERATION:{
             ASTAssDecl *assdecl = (ASTAssDecl*)node;
             u32 reg = lowerExpression(assdecl->rhs, file);
@@ -174,8 +188,23 @@ void lowerToRISCV(char *outputPath, DynamicArray<ASTBase*> &globals){
 #endif
     const u32 BUFF_SIZE = 1024;
     char buff[BUFF_SIZE];
-    char *start = ".global _zeus_main\n.section data\n";
+    char *start = ".section data\n";
     u32 cursor = snprintf(buff, BUFF_SIZE, "%s", start);
+    for(u32 x=0,i=0; x<stringToId.count;){
+        if(stringToId.status[i]){
+            DUMP_STRINGS:
+            const String str = stringToId.keys[i];
+            u32 temp = snprintf(buff+cursor, BUFF_SIZE-cursor, "_L%d: .ascii \"%.*s\"\n", x, str.len, str.mem);
+            if(temp+cursor > BUFF_SIZE){
+                WRITE(file, buff, cursor);
+                cursor = 0;
+                goto DUMP_STRINGS;
+            };
+            cursor += temp;
+            x++;
+        };
+        i++;
+    };
     for(u32 x=0; x<globals.count; x++){
         //TODO: strings
         ASTAssDecl *assdecl = (ASTAssDecl*)globals[x];
@@ -186,27 +215,21 @@ GLOBAL_WRITE_ASM_TO_BUFF:
             case ASTType::STRING:{
                 ASTString *str = (ASTString*)assdecl->rhs;
                 u32 off;
-                if(!stringToId.getValue(str->str, &off)){
-                    off = stringToId.count;
-                    temp = snprintf(buff+cursor, BUFF_SIZE, "_S%d: .ascii \"%.*s\"\n%.*s: .dword _S%d\n",
-                                    off, str->str.len, str->str.mem, var->name.len, var->name.mem, off);
-                    stringToId.insertValue(str->str, off);
-                }else{
-                    temp = snprintf(buff+cursor, BUFF_SIZE, "%.*s: .dword _S%d\n", var->name.len, var->name.mem, off);
-                };
+                stringToId.getValue(str->str, &off);
+                temp = snprintf(buff+cursor, BUFF_SIZE-cursor, "%.*s: .dword _S%d\n", var->name.len, var->name.mem, off);
             }break;
             case ASTType::CHARACTER:{
                 ASTNum *num = (ASTNum*)assdecl->rhs;
-                temp = snprintf(buff+cursor, BUFF_SIZE, ".%.*s: .byte %d\n", var->name.len, var->name.mem, (u8)num->integer);
+                temp = snprintf(buff+cursor, BUFF_SIZE-cursor, ".%.*s: .byte %d\n", var->name.len, var->name.mem, (u8)num->integer);
             }break;
             case ASTType::INTEGER:{
                 ASTNum *num = (ASTNum*)assdecl->rhs;
                 bool dw = false;
                 if(var->entity->size > 32 || var->entity->pointerDepth > 0) dw = true;
-                temp = snprintf(buff+cursor, BUFF_SIZE, ".%.*s: .%s %lld\n", var->name.len, var->name.mem, dw?"dword":"word", num->integer);
+                temp = snprintf(buff+cursor, BUFF_SIZE-cursor, ".%.*s: .%s %lld\n", var->name.len, var->name.mem, dw?"dword":"word", num->integer);
             }break;
         };
-        if(temp + cursor >= 1024){
+        if(temp + cursor >= BUFF_SIZE){
             WRITE(file, buff, cursor);
             cursor = 0;
             goto GLOBAL_WRITE_ASM_TO_BUFF;
@@ -214,7 +237,7 @@ GLOBAL_WRITE_ASM_TO_BUFF:
         cursor += temp;
     };
     if(cursor) WRITE(file, buff, cursor);
-    char *textSection = ".section text\n";
+    char *textSection = "\n.section text\n";
     WRITE(file, textSection, strlen(textSection));
     for(u32 x=linearDepEntities.count; x > 0;){
         x -= 1;

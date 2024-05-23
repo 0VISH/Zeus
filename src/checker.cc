@@ -142,6 +142,9 @@ Type checkModifierChain(Lexer &lexer, ASTBase *root, VariableEntity *entity){
     };
     return Type::INVALID;
 };
+
+static HashmapStr stringToId;
+
 Type checkTree(Lexer &lexer, ASTBase *node, DynamicArray<Scope*> &scopes, u32 &pointerDepth){
     BRING_TOKENS_TO_SCOPE;
     pointerDepth = 0;
@@ -155,7 +158,14 @@ Type checkTree(Lexer &lexer, ASTBase *node, DynamicArray<Scope*> &scopes, u32 &p
         case ASTType::BOOL:      return Type::BOOL;
         case ASTType::INTEGER:   return Type::COMP_INTEGER;
         case ASTType::DECIMAL:   return Type::COMP_DECIMAL;
-        case ASTType::STRING:    return Type::COMP_STRING;
+        case ASTType::STRING:{
+            u32 off;
+            ASTString *str = (ASTString*)node;
+            if(!stringToId.getValue(str->str, &off)){
+                stringToId.insertValue(str->str, stringToId.count);
+            };
+            return Type::COMP_STRING;
+        }break;
         case ASTType::VARIABLE:{
             VariableEntity *entity = getVariableEntity(node, scopes);
             if(entity == nullptr){
@@ -292,7 +302,7 @@ u64 checkDecl(Lexer &lexer, ASTAssDecl *assdecl, DynamicArray<Scope*> &scopes){
         else entity->size = size;
     };
     return size;
-}
+};
 bool checkScope(Lexer &lexer, ASTBase **nodes, u32 nodeCount, DynamicArray<Scope*> &scopes){
     BRING_TOKENS_TO_SCOPE;
     Scope *scope = scopes[scopes.count-1];
@@ -456,10 +466,13 @@ bool checkASTFile(Lexer &lexer, ASTFile &file, Scope &scope, DynamicArray<ASTBas
                 };
                 globals.push(node);
                 ASTBase *lastNode = file.nodes.pop();
-                if(lastNode != node) file.nodes[x] = lastNode;
-                else x++;
+                if(lastNode != node){
+                    file.nodes[x] = lastNode;
+                    continue;
+                };
             }break;
         };
+        x++;
     };
     return res;
 };

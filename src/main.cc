@@ -76,7 +76,9 @@ s32 main(s32 argc, char **argv){
     strucs.init();
     DynamicArray<ASTBase*> globals;
     globals.init();
+    stringToId.init();
     DEFER({
+        stringToId.uninit();
         globals.uninit();
         strucs.uninit();
         struc.uninit();
@@ -104,8 +106,6 @@ s32 main(s32 argc, char **argv){
             return EXIT_SUCCESS;
         };
     };
-    stringToId.init();
     lowerToRISCV(outputPath, globals);
-    stringToId.uninit();
     return EXIT_SUCCESS;
 };

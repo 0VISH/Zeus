@@ -38,6 +38,7 @@ enum class TokType {
 
     P_START,     //poundwords start
     P_IMPORT,
+    P_STACK_SIZE,
     P_END,       //poundwords end
 };
 struct TokenOffset {
@@ -74,6 +75,7 @@ namespace Word{
     };
     const WordData poundwordsData[] = {
 	    {"import", TokType::P_IMPORT},
+        {"stack_size", TokType::P_STACK_SIZE},
     };
     HashmapStr keywords;
     HashmapStr poundwords;
@@ -166,7 +168,7 @@ struct Lexer {
             case '#':{
                 x += 1;
                 u32 start = x;
-                while(isAlpha(src[x])) x += 1;
+                while(isAlpha(src[x]) || src[x] == '_') x += 1;
                 if(start == x){
                     emitErr(start, "Expected an identifier");
                     return false;
