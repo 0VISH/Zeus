@@ -1,9 +1,3 @@
-#stack_size = 2.1
-
-x: = "Hello, world"
-x2 := "hi"
-x3 := "hi"
-
-main :: proc(){
+foo :: proc(x: u32){
     xt := 3
 }

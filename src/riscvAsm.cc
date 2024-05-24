@@ -1,6 +1,7 @@
 #define BUCKET_BUFFER_SIZE 1024
 #define REGS 25
 #define START_FREE_REG 6
+#define PROC_ARG_REG   5
 
 #if(WIN)
 #define WRITE(file, buff, len) WriteFile(file, buff, len, nullptr, NULL)
@@ -9,7 +10,7 @@
 #endif
 
 struct VarInfo{
-    u32 off;    //offset from fp
+    s32 off;    //offset from fp
     bool dw;    //dw or w?
 };
 struct Area{
@@ -26,8 +27,8 @@ struct Area{
     }
 };
 struct Register{
-    s32 off;      //empty: -1
-    u32 gen;      //generation of area
+    s64 off;      //empty: -1
+    u8  gen;      //generation of area
 };
 struct ASMBucket{
     char buff[BUCKET_BUFFER_SIZE+1];    //+1 for null byte
@@ -141,24 +142,47 @@ void lowerASTNode(ASTBase *node, ASMFile &file){
                 stackSize = (u32)(pStackSize * 1000);
                 file.write("li x6, %d\nsub sp, sp, x6", stackSize);
             };
+            Area &procArea = file.areas.newElem();
+            procArea.init();
+            u32 procArgRegisterCount = 0;
+            u64 procArgTotalSize = 0;
+            for(u32 x=proc->inputCount; x>0;){
+                ASTAssDecl *decl = proc->inputs[--x];
+                for(u32 i=0; i<decl->lhsCount; i++){
+                    ASTVariable *var = (ASTVariable*)decl->lhs[i];
+                    procArea.varToOff.insertValue(var->name, procArea.infos.count);
+                    VarInfo &info = procArea.infos.newElem();
+                    if(var->entity->size > 64){
+                        info.off = -1 * (procArgTotalSize+var->entity->size);
+                        info.dw  = true;
+                    }else{
+                        info.off = procArgTotalSize+var->entity->size;
+                        info.dw = false;
+                    };
+                };
+            };
             for(u32 x=0; x<proc->bodyCount; x++){
                 lowerASTNode(proc->body[x], file);
             };
+            file.areas.pop();
             if(stackSize != 0){
                 file.write("li x6, %d\nadd sp, sp, x6", stackSize);
             };
         }break;
         case ASTType::DECLERATION:{
             ASTAssDecl *assdecl = (ASTAssDecl*)node;
-            u32 reg = lowerExpression(assdecl->rhs, file);
-            Area &curArea = file.areas[file.areas.count-1];
-            //TODO: many elem in lhs
-            ASTVariable *var = (ASTVariable*)assdecl->lhs[0];
-            curArea.varToOff.insertValue(var->name, curArea.infos.count-1);
-            VarInfo &info = curArea.infos.newElem();
-            info.off = file.off;
-            info.dw = (var->entity->size > 32 || var->entity->pointerDepth > 0) ? true:false;
-            file.off += (var->entity->pointerDepth > 0) ? 64:var->entity->size;
+            if(assdecl->lhsCount > 1){
+                //TODO:
+            }else{
+                u32 reg = lowerExpression(assdecl->rhs, file);
+                Area &curArea = file.areas[file.areas.count-1];
+                ASTVariable *var = (ASTVariable*)assdecl->lhs[0];
+                curArea.varToOff.insertValue(var->name, curArea.infos.count-1);
+                VarInfo &info = curArea.infos.newElem();
+                info.off = file.off;
+                info.dw = (var->entity->size > 32 || var->entity->pointerDepth > 0) ? true:false;
+                file.off += (var->entity->pointerDepth > 0) ? 64:var->entity->size;
+            }
         }break;
     };
 };

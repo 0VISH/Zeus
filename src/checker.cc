@@ -303,123 +303,152 @@ u64 checkDecl(Lexer &lexer, ASTAssDecl *assdecl, DynamicArray<Scope*> &scopes){
     };
     return size;
 };
-bool checkScope(Lexer &lexer, ASTBase **nodes, u32 nodeCount, DynamicArray<Scope*> &scopes){
+bool checkASTNode(Lexer &lexer, ASTBase *node, DynamicArray<Scope*> &scopes){
     BRING_TOKENS_TO_SCOPE;
     Scope *scope = scopes[scopes.count-1];
-    for(u32 x=0; x<nodeCount; x++){
-        ASTBase *node = nodes[x];
-        switch(node->type){
-            case ASTType::PROC_DEF:{
-                ASTProcDefDecl *proc = (ASTProcDefDecl*)node;
-                if(getProcEntity(proc->name, scopes)){
-                    lexer.emitErr(tokOffs[proc->tokenOff].off, "Procedure with this name already exists");
+    switch(node->type){
+        case ASTType::PROC_DEF:{
+            ASTProcDefDecl *proc = (ASTProcDefDecl*)node;
+            if(getProcEntity(proc->name, scopes)){
+                lexer.emitErr(tokOffs[proc->tokenOff].off, "Procedure with this name already exists");
+                return false;
+            };
+            scope->proc.insertValue(proc->name, scope->procs.count);
+            ProcEntity *entity = &scope->procs.newElem();
+            Scope *body = &scopeAllocMem[scopeOff++];
+            body->init(ScopeType::BLOCK);
+            entity->body = body;
+            entity->inputs = proc->inputs;
+            entity->inputCount = proc->inputCount;
+            entity->outputs = proc->outputs;
+            entity->outputCount = proc->outputCount;
+            scopes.push(body);
+            DEFER(scopes.pop());
+            DynamicArray<Scope*> procInputScope;
+            procInputScope.init(1);
+            procInputScope.push(body);
+            DEFER(procInputScope.uninit());
+            for(u32 x=0; x<proc->inputCount; x++){
+                if(proc->inputs[x]->type != ASTType::DECLERATION){
+                    lexer.emitErr(tokOffs[proc->tokenOff].off, "One of the input is not a decleration");
                     return false;
                 };
-                scope->proc.insertValue(proc->name, scope->procs.count);
-                ProcEntity *entity = &scope->procs.newElem();
-                Scope *body = &scopeAllocMem[scopeOff++];
-                body->init(ScopeType::BLOCK);
-                entity->body = body;
-                entity->inputs = proc->inputs;
-                entity->inputCount = proc->inputCount;
-                entity->outputs = proc->outputs;
-                entity->outputCount = proc->outputCount;
-                scopes.push(body);
-                DEFER(scopes.pop());
-                DynamicArray<Scope*> procInputScope;
-                procInputScope.init(1);
-                procInputScope.push(body);
-                DEFER(procInputScope.uninit());
-                for(u32 x=0; x<proc->inputCount; x++){
-                    if(proc->inputs[x]->type != ASTType::DECLERATION){
-                        lexer.emitErr(tokOffs[proc->tokenOff].off, "One of the input is not a decleration");
-                        return false;
-                    };
-                    ASTAssDecl *input = proc->inputs[x];
-                    if(input->rhs){
-                        lexer.emitErr(tokOffs[proc->tokenOff].off, "Zeus does not support default argument");
-                        return false;
-                    };
-                    if(checkDecl(lexer, input, procInputScope) == 0) return false;
-                };
-                for(u32 x=0; x<proc->outputCount; x++){
-                    if(!fillTypeInfo(lexer, proc->outputs[x])) return false;
-                };
-                return checkScope(lexer, proc->body, proc->bodyCount, scopes);
-            }break;
-            case ASTType::STRUCT:{
-                ASTStruct *Struct = (ASTStruct*)node;
-                if(getStructEntity(Struct->name)){
-                    lexer.emitErr(tokOffs[Struct->tokenOff].off, "Structure already defined");
+                ASTAssDecl *input = proc->inputs[x];
+                if(input->rhs){
+                    lexer.emitErr(tokOffs[proc->tokenOff].off, "Zeus does not support default argument");
                     return false;
                 };
-                u32 id = strucs.count;
-                struc.insertValue(Struct->name, id);
-                StructEntity *entity = &strucs.newElem();
-                Scope *body = &scopeAllocMem[scopeOff++];
-                body->init(ScopeType::BLOCK);
-                entity->body = body;
-                u64 size = 0;
-                scopes.push(body);
-                for(u32 x=0; x<Struct->bodyCount; x++){
-                    ASTAssDecl *node = (ASTAssDecl*)Struct->body[x];
-                    if(node->type != ASTType::DECLERATION){
-                        lexer.emitErr(tokOffs[Struct->tokenOff].off, "Body should contain only declerations");
-                        return false;
-                    };
-                    if(node->rhs){
-                        lexer.emitErr(tokOffs[Struct->tokenOff].off, "Body should not contain decleration with RHS(expression tree)");
-                        return false;
-                    }
-                    u64 temp = checkDecl(lexer, node, scopes);
-                    if(temp == 0) return false;
-                    size += temp;
+                if(checkDecl(lexer, input, procInputScope) == 0) return false;
+            };
+            for(u32 x=0; x<proc->outputCount; x++){
+                if(!fillTypeInfo(lexer, proc->outputs[x])) return false;
+            };
+            for(u32 x=0; x<proc->bodyCount; x++){
+                if(!checkASTNode(lexer, proc->body[x], scopes)) return false;
+            };
+        }break;
+        case ASTType::STRUCT:{
+            ASTStruct *Struct = (ASTStruct*)node;
+            if(getStructEntity(Struct->name)){
+                lexer.emitErr(tokOffs[Struct->tokenOff].off, "Structure already defined");
+                return false;
+            };
+            u32 id = strucs.count;
+            struc.insertValue(Struct->name, id);
+            StructEntity *entity = &strucs.newElem();
+            Scope *body = &scopeAllocMem[scopeOff++];
+            body->init(ScopeType::BLOCK);
+            entity->body = body;
+            u64 size = 0;
+            scopes.push(body);
+            for(u32 x=0; x<Struct->bodyCount; x++){
+                ASTAssDecl *node = (ASTAssDecl*)Struct->body[x];
+                if(node->type != ASTType::DECLERATION){
+                    lexer.emitErr(tokOffs[Struct->tokenOff].off, "Body should contain only declerations");
+                    return false;
                 };
-                entity->size = size;
-                scopes.pop();
-            }break;
-            case ASTType::DECLERATION:{
-                if(checkDecl(lexer, (ASTAssDecl*)node, scopes) == 0) return false;
-            }break;
-            case ASTType::ASSIGNMENT:{
-                ASTAssDecl *assdecl = (ASTAssDecl*)node;
+                if(node->rhs){
+                    lexer.emitErr(tokOffs[Struct->tokenOff].off, "Body should not contain decleration with RHS(expression tree)");
+                    return false;
+                }
+                u64 temp = checkDecl(lexer, node, scopes);
+                if(temp == 0) return false;
+                size += temp;
+            };
+            entity->size = size;
+            scopes.pop();
+        }break;
+        case ASTType::DECLERATION:{
+            if(checkDecl(lexer, (ASTAssDecl*)node, scopes) == 0) return false;
+        }break;
+        case ASTType::ASSIGNMENT:{
+            ASTAssDecl *assdecl = (ASTAssDecl*)node;
+            if(assdecl->lhsCount > 1 && assdecl->rhs->type != ASTType::PROC_CALL){
+                lexer.emitErr(tokOffs[assdecl->tokenOff].off, "If LHS has many elements, then RHS should be a procedure call returning same number of elements");
+                return false;
+            };
+            for(u32 x=0; x<assdecl->lhsCount; x++){
+                ASTBase *node = assdecl->lhs[x];
+                VariableEntity *entity = getVariableEntity(node, scopes);
+                if(entity == nullptr){
+                    if(node->type == ASTType::VARIABLE || node->type == ASTType::MODIFIER){
+                            lexer.emitErr(tokOffs[assdecl->tokenOff].off, "Variable not defined in LHS(%d)", x);
+                            return false;
+                    };
+                    lexer.emitErr(tokOffs[assdecl->tokenOff].off, "Only variable or modifiers allowed in LHS");
+                    return false;
+                };
+                if(node->type == ASTType::MODIFIER){
+                    ASTModifier *mod = (ASTModifier*)node;
+                    if(checkModifierChain(lexer, mod->child, entity) == Type::INVALID) return false;
+                };
+            };
+            if(assdecl->lhsCount > 1 && assdecl->rhs->type == ASTType::PROC_CALL){
+                ASTProcCall *procCall = (ASTProcCall*)assdecl->rhs;
+                ProcEntity *entity = getProcEntity(procCall->name, scopes);
+                if(entity == nullptr){
+                    lexer.emitErr(tokOffs[procCall->tokenOff].off, "Procedure not defined");
+                    return false;
+                };
+                if(entity->outputCount > assdecl->lhsCount){
+                    lexer.emitErr(tokOffs[assdecl->tokenOff].off, "RHS returns more than what LHS can catch");
+                    return false;
+                };
+                if(entity->outputCount < assdecl->lhsCount){
+                    lexer.emitErr(tokOffs[assdecl->tokenOff].off, "RHS returns less than what LHS can catch");
+                    return false;
+                };
+                if(entity->inputCount != procCall->argCount){
+                    lexer.emitErr(tokOffs[procCall->tokenOff].off, "Procedure defined with %d input%sbut you provided %d input%s",
+                                  entity->inputCount, entity->inputCount>1?"s ":" ", procCall->argCount, procCall->argCount>1?"s ":" ");
+                };
+                for(u32 x=0; x<entity->inputCount; x++){
+                    if(!checkASTNode(lexer, procCall->args[x], scopes)) return false;
+                };
+            }else{
                 u32 treePointerDepth;
                 Type treeType = checkTree(lexer, assdecl->rhs, scopes, treePointerDepth);
                 if(treeType == Type::INVALID) return false;
-                for(u32 x=0; x<assdecl->lhsCount; x++){
-                    ASTBase *node = assdecl->lhs[x];
-                    VariableEntity *entity = getVariableEntity(node, scopes);
-                    if(entity == nullptr){
-                        if(node->type == ASTType::VARIABLE || node->type == ASTType::MODIFIER){
-                                lexer.emitErr(tokOffs[assdecl->tokenOff].off, "Variable not defined in LHS(%d)", x);
-                                return false;
-                        };
-                        lexer.emitErr(tokOffs[assdecl->tokenOff].off, "Only variable or modifiers allowed in LHS");
-                        return false;
-                    };
-                    if(node->type == ASTType::MODIFIER){
-                        ASTModifier *mod = (ASTModifier*)node;
-                        if(checkModifierChain(lexer, mod->child, entity) == Type::INVALID) return false;
-                    };
-                };
-            }break;
-            case ASTType::IF:{
-                ASTIf *If = (ASTIf*)node;
-                u32 treePointerDepth;
-                Type treeType = checkTree(lexer, If->expr, scopes, treePointerDepth);
-                if(treeType == Type::INVALID) return false;
-                if(treeType > Type::COUNT && treePointerDepth == 0){
-                    lexer.emitErr(tokOffs[If->exprTokenOff].off, "Invalid expression");
-                    return false;
-                };
-                Scope *bodyScope = &scopeAllocMem[scopeOff++];
-                bodyScope->init(ScopeType::BLOCK);
-                scopes.push(bodyScope);
-                bool res = checkScope(lexer, If->ifBody, If->ifBodyCount, scopes);
-                scopes.pop();
-                return res;
-            }break;
-        };
+            }
+        }break;
+        case ASTType::IF:{
+            ASTIf *If = (ASTIf*)node;
+            u32 treePointerDepth;
+            Type treeType = checkTree(lexer, If->expr, scopes, treePointerDepth);
+            if(treeType == Type::INVALID) return false;
+            if(treeType > Type::COUNT && treePointerDepth == 0){
+                lexer.emitErr(tokOffs[If->exprTokenOff].off, "Invalid expression");
+                return false;
+            };
+            Scope *bodyScope = &scopeAllocMem[scopeOff++];
+            bodyScope->init(ScopeType::BLOCK);
+            scopes.push(bodyScope);
+            DEFER(scopes.pop());
+            for(u32 x=0; x<If->ifBodyCount; x++){
+                if(!checkASTNode(lexer, If->ifBody[x], scopes)) return false;
+            };
+            //TODO: else
+        }break;
     };
     return true;
 };
@@ -432,7 +461,9 @@ bool checkASTFile(Lexer &lexer, ASTFile &file, Scope &scope, DynamicArray<ASTBas
         scopes.push(&globalScopes[file.dependencies[x]]);
     };
     scopes.push(&scope);
-    bool res = checkScope(lexer, file.nodes.mem, file.nodes.count, scopes);
+    for(u32 x=0; x<file.nodes.count; x++){
+        if(!checkASTNode(lexer, file.nodes[x], scopes)) return false;
+    };
     const u32 curOff = &scope - globalScopes;
     for(u32 x=0; x<file.nodes.count;){
         ASTBase *node = file.nodes[x];
@@ -474,5 +505,5 @@ bool checkASTFile(Lexer &lexer, ASTFile &file, Scope &scope, DynamicArray<ASTBas
         };
         x++;
     };
-    return res;
+    return true;
 };

@@ -135,6 +135,7 @@ struct ASTProcCall : ASTBase{
     String name;
     ASTBase **args;
     u32 argCount;
+    u32 tokenOff;
 };
 struct ASTInitializerList : ASTBase{
     ASTBase **elements;
@@ -382,6 +383,7 @@ ASTBase* _genASTExprTree(Lexer &lexer, ASTFile &file, u32 &xArg, u8 &bracketArg)
         case TokType::IDENTIFIER:{
             if(tokTypes[x+1] == (TokType)'('){
                 ASTProcCall *pcall = (ASTProcCall*)file.newNode(sizeof(ASTProcCall), ASTType::PROC_CALL);
+                pcall->tokenOff = x;
                 pcall->name = makeStringFromTokOff(x, lexer);
                 x += 2;
                 DynamicArray<ASTBase*> args;
