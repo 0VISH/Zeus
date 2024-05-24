@@ -1,3 +1,4 @@
-foo :: proc(x: u32){
-    xt := 3
+foo :: proc(x, y, z: u32){
+    y = x
+    z = 5
 }

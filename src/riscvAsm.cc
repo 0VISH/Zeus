@@ -1,7 +1,9 @@
 #define BUCKET_BUFFER_SIZE 1024
 #define REGS 25
 #define START_FREE_REG 6
-#define PROC_ARG_REG   5
+#define PROC_ARG_REG_COUNT 5
+#define FREE_REG       -1
+#define CONST_IN_REG   -2
 
 #if(WIN)
 #define WRITE(file, buff, len) WriteFile(file, buff, len, nullptr, NULL)
@@ -10,8 +12,8 @@
 #endif
 
 struct VarInfo{
-    s32 off;    //offset from fp
-    bool dw;    //dw or w?
+    s32 fpOff;    //offset from fp
+    bool dw;      //dw or w?
 };
 struct Area{
     HashmapStr varToOff;          //maps var name to offset in offs
@@ -26,9 +28,8 @@ struct Area{
         infos.uninit();
     }
 };
-struct Register{
-    s64 off;      //empty: -1
-    u8  gen;      //generation of area
+struct Register : VarInfo{
+    u32 gen;
 };
 struct ASMBucket{
     char buff[BUCKET_BUFFER_SIZE+1];    //+1 for null byte
@@ -51,11 +52,11 @@ struct ASMFile{
     (x6,x31) -> 25 free regs
     */
     Register regs[REGS];
-    u32 off;                   //off from fp
+    u32 fpOff;                 //off from fp
     u32 cursor;                //cursor for ASMBucket buffer
 
     void init(){
-        off = 0;
+        fpOff = 0;
         cursor = 0;
         areas.init(10);
         Area &fileArea = areas.newElem();
@@ -64,7 +65,7 @@ struct ASMFile{
         start->buff[BUCKET_BUFFER_SIZE] = '\0';
         start->next = nullptr;
         cur = start;
-        memset(regs, -1, sizeof(Register)*25);
+        memset(regs, FREE_REG, sizeof(VarInfo)*25);
     };
     void uninit(){
         for(u32 x=0; x<areas.count; x++) areas[x].uninit();
@@ -93,18 +94,20 @@ struct ASMFile{
     };
 };
 
-void store(u32 x, ASMFile &file){
-    VarInfo info = file.areas[file.regs[x].gen].infos[x];
-    file.write("%s x%d, %d(x5)", info.dw?"sd":"sw", x+START_FREE_REG, info.off);
+inline void store(u32 reg, ASMFile &file){
+    VarInfo info = file.regs[reg];
+    if(info.fpOff == FREE_REG || info.fpOff == CONST_IN_REG) return;
+    file.write("%s x%d, %d(x5)", info.dw?"sd":"sw", reg+START_FREE_REG, info.fpOff);
 };
-void setRegister(u32 x, u32 gen, ASMFile &file){
-    file.regs[x].gen = gen;
-    file.regs[x].off = 0;   //setting to non -1 value. Maybe set to different values based on what resided?
+inline void setRegister(u32 reg, u32 fpOff, u32 gen, bool dw, ASMFile &file){
+    file.regs[reg].gen = gen;
+    file.regs[reg].fpOff = fpOff;
+    file.regs[reg].dw = dw;
 };
 u32 getOrCreateFreeRegister(ASMFile &file){
     u32 curGen = file.areas.count;
     for(u32 x=0; x<REGS; x++){
-        if(file.regs[x].off == -1){return x;};
+        if(file.regs[x].fpOff == -1){return x;};
     };
     for(u32 x=0; x<REGS; x++){
         if(file.regs[x].gen < curGen){
@@ -113,6 +116,35 @@ u32 getOrCreateFreeRegister(ASMFile &file){
         };
     };
     store(0, file);
+    return 0;
+};
+VarInfo getVarInfo(String &name, ASMFile &file, u32 *offset=nullptr, u32 *generation=nullptr){
+    u32 curGen = file.areas.count;
+    u32 off;
+    u32 gen = curGen;
+    while(gen>0){
+        if(file.areas[--gen].varToOff.getValue(name, &off)) break;
+    };
+    if(offset) *offset = off;
+    if(generation) *generation = gen;
+    //TODO: globals
+    return file.areas[gen].infos[off];
+};
+u32 getOrLoadToRegister(String &name, ASMFile &file){
+    u32 off, gen;
+    VarInfo info = getVarInfo(name, file, &off, &gen);
+    for(u32 x=0; x<REGS; x++){
+        if(file.regs[x].gen == gen && file.regs[x].fpOff == info.fpOff){
+            return x;
+        };
+    };
+    for(u32 x=0; x<REGS; x++){
+        if(file.regs[x].fpOff == -1){
+            file.write("%s x%d, %d(x5)", info.dw?"ld":"lw", x+START_FREE_REG, info.fpOff);
+            setRegister(x, info.fpOff, gen, info.dw, file);
+            return x;
+        };
+    };
     return 0;
 };
 u32 lowerExpression(ASTBase *node, ASMFile &file){
@@ -124,9 +156,13 @@ u32 lowerExpression(ASTBase *node, ASMFile &file){
             */
             ASTNum *num = (ASTNum*)node;
             u32 reg = getOrCreateFreeRegister(file);
-            setRegister(reg, file.areas.count-1, file);
+            setRegister(reg, CONST_IN_REG, file.areas.count-1, false, file);  //FIXME: not always false
             file.write("li x%d, %lld", reg+START_FREE_REG, num->integer);
             return reg;
+        }break;
+        case ASTType::VARIABLE:{
+            ASTVariable *var = (ASTVariable*)node;
+            return getOrLoadToRegister(var->name, file);
         }break;
         default: UNREACHABLE;
     };
@@ -140,7 +176,7 @@ void lowerASTNode(ASTBase *node, ASMFile &file){
             u32 stackSize = 0;
             if(cmpString(proc->name, "main")){
                 stackSize = (u32)(pStackSize * 1000);
-                file.write("li x6, %d\nsub sp, sp, x6", stackSize);
+                file.write("li x6, %d\nsub sp, sp, x6\naddi fp, sp, 0", stackSize);
             };
             Area &procArea = file.areas.newElem();
             procArea.init();
@@ -152,12 +188,16 @@ void lowerASTNode(ASTBase *node, ASMFile &file){
                     ASTVariable *var = (ASTVariable*)decl->lhs[i];
                     procArea.varToOff.insertValue(var->name, procArea.infos.count);
                     VarInfo &info = procArea.infos.newElem();
-                    if(var->entity->size > 64){
-                        info.off = -1 * (procArgTotalSize+var->entity->size);
+                    if(var->entity->size > 64 || procArgRegisterCount >= PROC_ARG_REG_COUNT){
+                        procArgTotalSize += var->entity->size;
+                        info.fpOff = -1 * (procArgTotalSize);
                         info.dw  = true;
                     }else{
-                        info.off = procArgTotalSize+var->entity->size;
+                        info.fpOff = procArgTotalSize+var->entity->size;
+                        procArgTotalSize += var->entity->size;
                         info.dw = false;
+                        setRegister(procArgRegisterCount, info.fpOff, file.areas.count-1, false, file);
+                        procArgRegisterCount++;
                     };
                 };
             };
@@ -170,19 +210,30 @@ void lowerASTNode(ASTBase *node, ASMFile &file){
             };
         }break;
         case ASTType::DECLERATION:{
-            ASTAssDecl *assdecl = (ASTAssDecl*)node;
-            if(assdecl->lhsCount > 1){
+            ASTAssDecl *decl = (ASTAssDecl*)node;
+            if(decl->lhsCount > 1){
                 //TODO:
             }else{
-                u32 reg = lowerExpression(assdecl->rhs, file);
+                u32 reg = lowerExpression(decl->rhs, file);
                 Area &curArea = file.areas[file.areas.count-1];
-                ASTVariable *var = (ASTVariable*)assdecl->lhs[0];
+                ASTVariable *var = (ASTVariable*)decl->lhs[0];
                 curArea.varToOff.insertValue(var->name, curArea.infos.count-1);
                 VarInfo &info = curArea.infos.newElem();
-                info.off = file.off;
+                info.fpOff = file.fpOff;
                 info.dw = (var->entity->size > 32 || var->entity->pointerDepth > 0) ? true:false;
-                file.off += (var->entity->pointerDepth > 0) ? 64:var->entity->size;
+                file.fpOff += (var->entity->pointerDepth > 0) ? 64:var->entity->size;
             }
+        }break;
+        case ASTType::ASSIGNMENT:{
+            ASTAssDecl *ass = (ASTAssDecl*)node;
+            if(ass->lhsCount > 1){
+                //TODO:
+            }else{
+                ASTVariable *var = (ASTVariable*)ass->lhs[0];
+                u32 rhs = lowerExpression(ass->rhs, file);
+                u32 lhs = getOrLoadToRegister(var->name, file);
+                file.write("add x%d, x0, x%d", lhs+START_FREE_REG, rhs+START_FREE_REG);
+            };
         }break;
     };
 };
