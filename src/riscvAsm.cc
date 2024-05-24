@@ -100,9 +100,10 @@ inline void store(u32 reg, ASMFile &file){
     file.write("%s x%d, %d(x5)", info.dw?"sd":"sw", reg+START_FREE_REG, info.fpOff);
 };
 inline void setRegister(u32 reg, u32 fpOff, u32 gen, bool dw, ASMFile &file){
-    file.regs[reg].gen = gen;
-    file.regs[reg].fpOff = fpOff;
-    file.regs[reg].dw = dw;
+    Register &regist = file.regs[reg];
+    regist.gen = gen;
+    regist.fpOff = fpOff;
+    regist.dw = dw;
 };
 u32 getOrCreateFreeRegister(ASMFile &file){
     u32 curGen = file.areas.count;
@@ -139,12 +140,22 @@ u32 getOrLoadToRegister(String &name, ASMFile &file){
         };
     };
     for(u32 x=0; x<REGS; x++){
-        if(file.regs[x].fpOff == -1){
+        if(file.regs[x].fpOff == FREE_REG || file.regs[x].fpOff == CONST_IN_REG){
             file.write("%s x%d, %d(x5)", info.dw?"ld":"lw", x+START_FREE_REG, info.fpOff);
             setRegister(x, info.fpOff, gen, info.dw, file);
             return x;
         };
     };
+    const u32 curGen = file.areas.count - 1;
+    for(u32 x=0; x<REGS; x++){
+        if(file.regs[x].gen < curGen){
+            store(x, file);
+            setRegister(x, info.fpOff, gen, info.dw, file);
+            return x;
+        };
+    };
+    store(0, file);
+    setRegister(0, info.fpOff, gen, info.dw, file);
     return 0;
 };
 u32 lowerExpression(ASTBase *node, ASMFile &file){
@@ -176,12 +187,13 @@ void lowerASTNode(ASTBase *node, ASMFile &file){
             u32 stackSize = 0;
             if(cmpString(proc->name, "main")){
                 stackSize = (u32)(pStackSize * 1000);
-                file.write("li x6, %d\nsub sp, sp, x6\naddi fp, sp, 0", stackSize);
+                file.write("li x6, %d\nsub sp, sp, x6\naddi x5, sp, 0", stackSize);
             };
             Area &procArea = file.areas.newElem();
             procArea.init();
             u32 procArgRegisterCount = 0;
-            u64 procArgTotalSize = 0;
+            u32 stackAbove = 0;
+            u32 stackBelow = 0;
             for(u32 x=proc->inputCount; x>0;){
                 ASTAssDecl *decl = proc->inputs[--x];
                 for(u32 i=0; i<decl->lhsCount; i++){
@@ -189,12 +201,12 @@ void lowerASTNode(ASTBase *node, ASMFile &file){
                     procArea.varToOff.insertValue(var->name, procArea.infos.count);
                     VarInfo &info = procArea.infos.newElem();
                     if(var->entity->size > 64 || procArgRegisterCount >= PROC_ARG_REG_COUNT){
-                        procArgTotalSize += var->entity->size;
-                        info.fpOff = -1 * (procArgTotalSize);
-                        info.dw  = true;
+                        stackBelow += var->entity->size;
+                        info.fpOff = -1 * (stackBelow);
+                        info.dw  = var->entity->size > 64;
                     }else{
-                        info.fpOff = procArgTotalSize+var->entity->size;
-                        procArgTotalSize += var->entity->size;
+                        stackAbove += var->entity->size;
+                        info.fpOff = stackAbove;
                         info.dw = false;
                         setRegister(procArgRegisterCount, info.fpOff, file.areas.count-1, false, file);
                         procArgRegisterCount++;
@@ -237,23 +249,7 @@ void lowerASTNode(ASTBase *node, ASMFile &file){
         }break;
     };
 };
-ASMBucket* lowerASTFile(ASTFile &file){
-    ASMFile AsmFile;
-    AsmFile.init();
-    for(u32 x=0; x<file.nodes.count; x++){
-        ASTBase *node = file.nodes[x];
-        switch(node->type){
-            case ASTType::ASSIGNMENT: break;
-            default: lowerASTNode(node, AsmFile);
-        };
-    };
-    ASMBucket *start = AsmFile.start;
-    AsmFile.uninit();
-    return start;
-};
-
 void lowerToRISCV(char *outputPath, DynamicArray<ASTBase*> &globals){
-    //no buffering please
 #if(WIN)
     HANDLE file = CreateFile(outputPath, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
     DEFER(CloseHandle(file));
@@ -281,7 +277,6 @@ void lowerToRISCV(char *outputPath, DynamicArray<ASTBase*> &globals){
         i++;
     };
     for(u32 x=0; x<globals.count; x++){
-        //TODO: strings
         ASTAssDecl *assdecl = (ASTAssDecl*)globals[x];
         ASTVariable *var = (ASTVariable*)assdecl->lhs[0];
         int temp;
@@ -318,7 +313,12 @@ GLOBAL_WRITE_ASM_TO_BUFF:
         x -= 1;
         FileEntity &fe = linearDepEntities[x];
         if(fe.file.nodes.count == 0) continue;
-        ASMBucket *buc = lowerASTFile(fe.file);
+        ASTFile &astFile = fe.file;
+        ASMFile AsmFile;
+        AsmFile.init();
+        for(u32 x=0; x<astFile.nodes.count; x++) lowerASTNode(astFile.nodes[x], AsmFile);
+        ASMBucket *buc = AsmFile.start;
+        AsmFile.uninit();
         while(buc){
             WRITE(file, buc->buff, strlen(buc->buff));
             mem::free(buc);

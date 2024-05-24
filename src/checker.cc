@@ -24,9 +24,10 @@ struct ProcEntity{
 
 struct Scope{
     HashmapStr var;
-    DynamicArray<VariableEntity> vars;
     HashmapStr proc;
-    DynamicArray<ProcEntity> procs;
+    //no need to free them as they live for the entire lifetime
+    DynamicArray<VariableEntity*> vars;
+    DynamicArray<ProcEntity*> procs;
     ScopeType type;
 
     void init(ScopeType stype){
@@ -68,7 +69,7 @@ VariableEntity *getVariableEntity(ASTBase *node, DynamicArray<Scope*> &scopes){
         Scope *scope = scopes[x];
         u32 off;
         if(!scope->var.getValue(name, &off)) continue;
-        return &scope->vars[off];
+        return scope->vars[off];
     };
     return nullptr;
 };
@@ -88,7 +89,7 @@ ProcEntity *getProcEntity(String name, DynamicArray<Scope*> &scopes){
         Scope *scope = scopes[x];
         u32 off;
         if(!scope->proc.getValue(name, &off)) continue;
-        return &scope->procs[off];
+        return scope->procs[off];
     };
     return nullptr;
 };
@@ -126,7 +127,7 @@ Type checkModifierChain(Lexer &lexer, ASTBase *root, VariableEntity *entity){
                     lexer.emitErr(tokOffs[mod->tokenOff].off, "%.*s does not belong to the defined structure", mod->name.len, mod->name.mem);
                     return Type::INVALID;
                 }
-                return checkModifierChain(lexer, mod->child, &structBodyScope->vars[off]);
+                return checkModifierChain(lexer, mod->child, structBodyScope->vars[off]);
             }break;
             //TODO: array_at
             case ASTType::VARIABLE:{
@@ -136,7 +137,7 @@ Type checkModifierChain(Lexer &lexer, ASTBase *root, VariableEntity *entity){
                     lexer.emitErr(tokOffs[var->tokenOff].off, "%.*s does not belong to the defined structure", var->name.len, var->name.mem);
                     return Type::INVALID;
                 };
-                return structBodyScope->vars[off].type;
+                return structBodyScope->vars[off]->type;
             }break;
         };
     };
@@ -258,6 +259,7 @@ u64 checkDecl(Lexer &lexer, ASTAssDecl *assdecl, DynamicArray<Scope*> &scopes){
             size = structEntity->size;
         }break;
     };
+    Scope *scope = scopes[scopes.count-1];
     for(u32 x=0; x<assdecl->lhsCount; x++){
         ASTBase *lhsNode = assdecl->lhs[x];
         if(getVariableEntity(lhsNode, scopes)){
@@ -277,25 +279,23 @@ u64 checkDecl(Lexer &lexer, ASTAssDecl *assdecl, DynamicArray<Scope*> &scopes){
             return 0;
         };
         String name;
-        Scope *scope = scopes[scopes.count-1];
-        VariableEntity **writeTo;
+        VariableEntity *entity = (VariableEntity*)mem::alloc(sizeof(VariableEntity));
+        scope->vars.push(entity);
         switch(lhsNode->type){
             case ASTType::VARIABLE:{
                 ASTVariable *var = (ASTVariable*)lhsNode;
                 name = var->name;
-                writeTo = &var->entity;
+                var->entity = entity;
             }break;
             case ASTType::MODIFIER:{
                 ASTModifier *mod = (ASTModifier*)lhsNode;
                 name = mod->name;
-                writeTo = &mod->entity;
+                mod->entity = entity;
             }break;
             default: return 0;
-        }
-        u32 id = scope->vars.count;
+        };
+        u32 id = scope->vars.count - 1;
         scope->var.insertValue(name, id);
-        VariableEntity *entity = &scope->vars.newElem();
-        *writeTo = entity;
         entity->pointerDepth = typePointerDepth;
         entity->type = typeType;
         if(typePointerDepth > 0) entity->size = 64;
@@ -314,7 +314,8 @@ bool checkASTNode(Lexer &lexer, ASTBase *node, DynamicArray<Scope*> &scopes){
                 return false;
             };
             scope->proc.insertValue(proc->name, scope->procs.count);
-            ProcEntity *entity = &scope->procs.newElem();
+            ProcEntity *entity = (ProcEntity*)mem::alloc(sizeof(ProcEntity));
+            scope->procs.push(entity);
             Scope *body = &scopeAllocMem[scopeOff++];
             body->init(ScopeType::BLOCK);
             entity->body = body;
@@ -323,11 +324,13 @@ bool checkASTNode(Lexer &lexer, ASTBase *node, DynamicArray<Scope*> &scopes){
             entity->outputs = proc->outputs;
             entity->outputCount = proc->outputCount;
             scopes.push(body);
-            DEFER(scopes.pop());
             DynamicArray<Scope*> procInputScope;
             procInputScope.init(1);
             procInputScope.push(body);
-            DEFER(procInputScope.uninit());
+            DEFER({
+                procInputScope.uninit();
+                scopes.pop();
+            });
             for(u32 x=0; x<proc->inputCount; x++){
                 if(proc->inputs[x]->type != ASTType::DECLERATION){
                     lexer.emitErr(tokOffs[proc->tokenOff].off, "One of the input is not a decleration");
