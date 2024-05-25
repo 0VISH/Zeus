@@ -1,7 +1,5 @@
 foo :: proc(){
-    if 2{
-        x := 2
-    }else{
+    for 2{
         x := 3
     }
 }

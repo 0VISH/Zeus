@@ -186,14 +186,25 @@ void lowerASTNode(ASTBase *node, ASMFile &file){
     switch(node->type){
         case ASTType::FOR:{
             ASTFor *For = (ASTFor*)node;
+            u32 labelBegin = labelId++;
             if(For->expr == nullptr && For->initializer == nullptr){
                 //for-ever
-                u32 labelBegin = labelId++;
                 file.write(".L%d:", labelBegin);
                 for(u32 x=0; x<For->bodyCount; x++){
                     lowerASTNode(For->body[x], file);
                 };
                 file.write("j .L%d", labelBegin);
+            }else if(For->initializer != nullptr){
+                //c-for
+            }else{
+                //c-while
+                u32 labelEnd = labelId++;
+                u32 reg = lowerExpression(For->expr, file);
+                file.write(".L%d:\nbeq x%d, zero, .L%d", labelBegin, reg+START_FREE_REG, labelEnd);
+                for(u32 x=0; x<For->bodyCount; x++){
+                    lowerASTNode(For->body[x], file);
+                };
+                file.write("j .L%d\n.L%d:", labelBegin, labelEnd);
             };
         }break;
         case ASTType::IF:{
