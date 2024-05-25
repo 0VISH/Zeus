@@ -84,7 +84,7 @@ struct ASTIf : ASTBase{
     u32 exprTokenOff;
 };
 struct ASTFor : ASTBase{
-    //when expr and intializer is nullptr, then we have an infinite loop
+    //when expr and initializer is nullptr, then we have an infinite loop
     union{
     //c-while
         ASTBase *expr;
@@ -93,7 +93,7 @@ struct ASTFor : ASTBase{
     };
     String iter;
     ASTTypeNode *type;
-    ASTBase *intializer;
+    ASTBase *initializer;
     ASTBase *end;
     ASTBase **body;
     u32 bodyCount;
@@ -711,7 +711,7 @@ bool parseBlock(Lexer &lexer, ASTFile &file, DynamicArray<ASTBase*> &table, u32 
                 x++;
                 node = genASTExprTree(lexer, file, x);
                 if(!node) return false;
-                For->intializer = node;
+                For->initializer = node;
                 if(tokTypes[x] != TokType::TDOT){
                     lexer.emitErr(tokOffs[x].off, "Expected '...'");
                     return false;
@@ -725,7 +725,7 @@ bool parseBlock(Lexer &lexer, ASTFile &file, DynamicArray<ASTBase*> &table, u32 
                     For->step = node;
                 }else For->step = nullptr;
             }else{
-                For->intializer = nullptr;
+                For->initializer = nullptr;
                 if(tokTypes[x] == (TokType)'{' || tokTypes[x] == (TokType)':'){
                     //for ever
                     For->expr = nullptr;
@@ -921,7 +921,7 @@ bool parseFile(Lexer &lexer, ASTFile &file){
 
 #if(DBG)
 
-#define PLOG(fmt, ...) pad(padding);printf(fmt, __VA_ARGS__)
+#define PLOG(...) pad(padding);printf(__VA_ARGS__)
 
 namespace dbg{
     inline void pad(u8 padding){
@@ -1031,9 +1031,9 @@ namespace dbg{
             }break;
             case ASTType::FOR:{
                 ASTFor *For = (ASTFor*)node;
-                if(For->expr == nullptr && For->intializer == nullptr){
+                if(For->expr == nullptr && For->initializer == nullptr){
                     printf("for ever");
-                }else if(For->intializer != nullptr){
+                }else if(For->initializer != nullptr){
                     printf("for(c-for)");
                     PLOG("iter: %.*s", For->iter.len, For->iter.mem);
                     if(For->type){
@@ -1041,7 +1041,7 @@ namespace dbg{
                         dumpASTNode(For->type, lexer, padding+1);
                     }
                     PLOG("start:");
-                    dumpASTNode(For->intializer, lexer, padding+1);
+                    dumpASTNode(For->initializer, lexer, padding+1);
                     PLOG("end:");
                     dumpASTNode(For->end, lexer, padding+1);
                     if(For->step){

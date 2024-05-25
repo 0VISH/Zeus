@@ -68,7 +68,9 @@ namespace mem{
 #endif
     
     void init(){
+#if(DBG)
 	allocCount = 0;
+#endif
 	memory = (char*)malloc(CHUNK_SIZE   * CHUNK_COUNT);
 	const u64 statSize = sizeof(bool) * (CHUNK_COUNT + 1);   //NOTE: +1 for padding
 	stat   = (bool*)malloc(statSize);

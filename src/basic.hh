@@ -25,7 +25,7 @@ void unreachable(const char *func, char *file, u32 line) {
 };
 #define UNREACHABLE unreachable(__FUNCTION__, __FILE__, __LINE__)
 #if(DBG)
-void ass(bool x, char *func, char *file, u32 line){
+void ass(bool x, const char *func, const char *file, u32 line){
     if(x){return;};
     printf("\n%s:%d(%s) assertion failed\n", file, line, func);
 };

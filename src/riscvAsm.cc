@@ -184,6 +184,18 @@ static u32 labelId = 0;
 
 void lowerASTNode(ASTBase *node, ASMFile &file){
     switch(node->type){
+        case ASTType::FOR:{
+            ASTFor *For = (ASTFor*)node;
+            if(For->expr == nullptr && For->initializer == nullptr){
+                //for-ever
+                u32 labelBegin = labelId++;
+                file.write(".L%d:", labelBegin);
+                for(u32 x=0; x<For->bodyCount; x++){
+                    lowerASTNode(For->body[x], file);
+                };
+                file.write("j .L%d", labelBegin);
+            };
+        }break;
         case ASTType::IF:{
             ASTIf *If = (ASTIf*)node;
             u32 endLabel = labelId++;
@@ -194,13 +206,13 @@ void lowerASTNode(ASTBase *node, ASMFile &file){
             };
             if(If->elseBodyCount > 0){
                 u32 newEndLabel = labelId++;
-                file.write("j .L%d\n.L%d", newEndLabel, endLabel);
+                file.write("j .L%d\n.L%d:", newEndLabel, endLabel);
                 for(u32 x=0; x<If->elseBodyCount; x++){
                     lowerASTNode(If->elseBody[x], file);
                 };
                 endLabel = newEndLabel;
             }
-            file.write(".L%d", endLabel);
+            file.write(".L%d:", endLabel);
         }break;
         case ASTType::PROC_DEF:{
             ASTProcDefDecl *proc = (ASTProcDefDecl*)node;

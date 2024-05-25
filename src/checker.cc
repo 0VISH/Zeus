@@ -308,6 +308,19 @@ bool checkASTNode(Lexer &lexer, ASTBase *node, DynamicArray<Scope*> &scopes){
     BRING_TOKENS_TO_SCOPE;
     Scope *scope = scopes[scopes.count-1];
     switch(node->type){
+        case ASTType::FOR:{
+            ASTFor *For = (ASTFor*)node;
+            if(For->expr == nullptr && For->initializer == nullptr){
+                //for-ever
+                Scope *body = &scopeAllocMem[scopeOff++];
+                body->init(ScopeType::BLOCK);
+                scopes.push(body);
+                for(u32 x=0; x<For->bodyCount; x++){
+                    if(!checkASTNode(lexer, For->body[x], scopes)) return false;
+                };
+                scopes.pop();
+            };
+        }break;
         case ASTType::PROC_DEF:{
             ASTProcDefDecl *proc = (ASTProcDefDecl*)node;
             if(scope->type != ScopeType::GLOBAL){
