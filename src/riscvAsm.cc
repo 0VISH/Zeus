@@ -179,8 +179,29 @@ u32 lowerExpression(ASTBase *node, ASMFile &file){
     };
     return 0;
 };
+
+static u32 labelId = 0;
+
 void lowerASTNode(ASTBase *node, ASMFile &file){
     switch(node->type){
+        case ASTType::IF:{
+            ASTIf *If = (ASTIf*)node;
+            u32 endLabel = labelId++;
+            u32 reg = lowerExpression(If->expr, file);
+            file.write("beq x%d, zero, .L%d", reg+START_FREE_REG, endLabel);
+            for(u32 x=0; x<If->ifBodyCount; x++){
+                lowerASTNode(If->ifBody[x], file);
+            };
+            if(If->elseBodyCount > 0){
+                u32 newEndLabel = labelId++;
+                file.write("j .L%d\n.L%d", newEndLabel, endLabel);
+                for(u32 x=0; x<If->elseBodyCount; x++){
+                    lowerASTNode(If->elseBody[x], file);
+                };
+                endLabel = newEndLabel;
+            }
+            file.write(".L%d", endLabel);
+        }break;
         case ASTType::PROC_DEF:{
             ASTProcDefDecl *proc = (ASTProcDefDecl*)node;
             file.write("%.*s:", proc->name.len, proc->name.mem);
@@ -321,8 +342,9 @@ GLOBAL_WRITE_ASM_TO_BUFF:
         AsmFile.uninit();
         while(buc){
             WRITE(file, buc->buff, strlen(buc->buff));
-            mem::free(buc);
+            ASMBucket *temp = buc;
             buc = buc->next;
+            mem::free(temp);
         };
     };
 };

@@ -12,6 +12,7 @@
 #include "include.hh"
 
 s32 main(s32 argc, char **argv){
+    mem::init();
     if(argc < 2){
         printf("no entryfile provided\n");
         return EXIT_SUCCESS;
@@ -29,18 +30,6 @@ s32 main(s32 argc, char **argv){
 
     mainFileEntity.lexer.init(inputPath);
     mainFileEntity.file.init();
-
-    DEFER({
-        for(u32 x=0; x<linearDepEntities.count; x++){
-            FileEntity &fe = linearDepEntities[x];
-            fe.lexer.uninit();
-            fe.file.uninit();
-        }
-        linearDepEntities.uninit();
-        linearDepStrings.uninit();
-        Word::uninit(Word::keywords);
-        Word::uninit(Word::poundwords);
-    });
 
     if(!mainFileEntity.lexer.genTokens()){
         report::flushReports();
@@ -68,26 +57,17 @@ s32 main(s32 argc, char **argv){
         };
     };
     u32 dependencyCount = linearDepEntities.count;
-    scopeOff = 0;
     globalScopes = (Scope*)mem::alloc(sizeof(Scope) * dependencyCount);
     memset(globalScopes, 0, sizeof(Scope) * dependencyCount);
     scopeAllocMem = (Scope*)mem::alloc(sizeof(Scope)*1000);
+    structScopeAllocMem = (Scope*)mem::alloc(sizeof(Scope)*100);
     struc.init();
     strucs.init();
     DynamicArray<ASTBase*> globals;
     globals.init();
     stringToId.init();
     DEFER({
-        stringToId.uninit();
-        globals.uninit();
-        strucs.uninit();
-        struc.uninit();
-        for(u32 x=0; x<dependencyCount; x++){
-            if(globalScopes[x].vars.len != 0){globalScopes[x].uninit();};
-        };
-        mem::free(globalScopes);
-        for(u32 x=0; x<scopeOff; x++) scopeAllocMem[x].uninit();
-        mem::free(scopeAllocMem);
+        mem::uninit();     //NOTE: this free all the memory that was allocated before
         printf("\nDone :)\n");
     });
 #if(DBG)
@@ -105,6 +85,8 @@ s32 main(s32 argc, char **argv){
             report::flushReports();
             return EXIT_SUCCESS;
         };
+        for(u32 x=0; x<scopeOff; x++) scopeAllocMem[x].uninit();
+        scopeOff = 0;
     };
     lowerToRISCV(outputPath, globals);
     return EXIT_SUCCESS;

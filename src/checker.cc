@@ -15,7 +15,6 @@ struct StructEntity{
     u64 size;
 };
 struct ProcEntity{
-    Scope *body;
     ASTAssDecl  **inputs;
     ASTTypeNode **outputs;
     u32 outputCount;
@@ -46,8 +45,10 @@ struct Scope{
 };
 
 static Scope *globalScopes;                //all file scopes
-static Scope *scopeAllocMem;               //all scopes
-static u32 scopeOff;                       //how many total scopes
+static Scope *structScopeAllocMem;         //struct scopes
+static Scope *scopeAllocMem;               //all scopes except file and struct
+static u32 scopeOff = 0;                   //how many total scopes except file and struct
+static u32 structScopeOff = 0;             //how many struct scopes
 static HashmapStr struc;                   //all structs name to off
 static DynamicArray<StructEntity> strucs;  //all structs
 
@@ -309,6 +310,10 @@ bool checkASTNode(Lexer &lexer, ASTBase *node, DynamicArray<Scope*> &scopes){
     switch(node->type){
         case ASTType::PROC_DEF:{
             ASTProcDefDecl *proc = (ASTProcDefDecl*)node;
+            if(scope->type != ScopeType::GLOBAL){
+                lexer.emitErr(tokOffs[proc->tokenOff].off, "Procedure can only be defined in the global scope");
+                return false;
+            };
             if(getProcEntity(proc->name, scopes)){
                 lexer.emitErr(tokOffs[proc->tokenOff].off, "Procedure with this name already exists");
                 return false;
@@ -318,7 +323,6 @@ bool checkASTNode(Lexer &lexer, ASTBase *node, DynamicArray<Scope*> &scopes){
             scope->procs.push(entity);
             Scope *body = &scopeAllocMem[scopeOff++];
             body->init(ScopeType::BLOCK);
-            entity->body = body;
             entity->inputs = proc->inputs;
             entity->inputCount = proc->inputCount;
             entity->outputs = proc->outputs;
@@ -359,7 +363,7 @@ bool checkASTNode(Lexer &lexer, ASTBase *node, DynamicArray<Scope*> &scopes){
             u32 id = strucs.count;
             struc.insertValue(Struct->name, id);
             StructEntity *entity = &strucs.newElem();
-            Scope *body = &scopeAllocMem[scopeOff++];
+            Scope *body = &structScopeAllocMem[structScopeOff++];
             body->init(ScopeType::BLOCK);
             entity->body = body;
             u64 size = 0;
@@ -446,11 +450,19 @@ bool checkASTNode(Lexer &lexer, ASTBase *node, DynamicArray<Scope*> &scopes){
             Scope *bodyScope = &scopeAllocMem[scopeOff++];
             bodyScope->init(ScopeType::BLOCK);
             scopes.push(bodyScope);
-            DEFER(scopes.pop());
             for(u32 x=0; x<If->ifBodyCount; x++){
                 if(!checkASTNode(lexer, If->ifBody[x], scopes)) return false;
             };
-            //TODO: else
+            scopes.pop();
+            if(If->elseBodyCount > 0){
+                Scope *elseBodyScope = &scopeAllocMem[scopeOff++];
+                elseBodyScope->init(ScopeType::BLOCK);
+                scopes.push(elseBodyScope);
+                for(u32 x=0; x<If->elseBodyCount; x++){
+                    if(!checkASTNode(lexer, If->elseBody[x], scopes)) return false;
+                };
+                scopes.pop();
+            };
         }break;
     };
     return true;
