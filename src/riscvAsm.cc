@@ -4,6 +4,8 @@
 #define PROC_ARG_REG_COUNT 5
 #define FREE_REG       -1
 #define CONST_IN_REG   -2
+#define GLOBAL_IN_REG  -3
+#define INVALID_REG    40
 
 #if(WIN)
 #define WRITE(file, buff, len) WriteFile(file, buff, len, nullptr, NULL)
@@ -29,6 +31,7 @@ struct Area{
     }
 };
 struct Register : VarInfo{
+    String globalName;        //len = 0 if not global
     u32 gen;
 };
 struct ASMBucket{
@@ -65,7 +68,7 @@ struct ASMFile{
         start->buff[BUCKET_BUFFER_SIZE] = '\0';
         start->next = nullptr;
         cur = start;
-        memset(regs, FREE_REG, sizeof(VarInfo)*25);
+        memset(regs, FREE_REG, sizeof(Register)*REGS);
     };
     void uninit(){
         for(u32 x=0; x<areas.count; x++) areas[x].uninit();
@@ -94,21 +97,45 @@ struct ASMFile{
     };
 };
 
+static HashmapStr globalToOff;
+static DynamicArray<VarInfo> globalInfos;
+
 inline void store(u32 reg, ASMFile &file){
-    VarInfo info = file.regs[reg];
-    if(info.fpOff == FREE_REG || info.fpOff == CONST_IN_REG) return;
-    file.write("%s x%d, %d(x5)", info.dw?"sd":"sw", reg+START_FREE_REG, info.fpOff);
+    Register regi = file.regs[reg];
+    if(regi.fpOff == FREE_REG || regi.fpOff == CONST_IN_REG){
+        file.regs[reg].fpOff = FREE_REG;
+        return;
+    };
+    if(regi.fpOff == GLOBAL_IN_REG){
+        u32 memReg = INVALID_REG;
+        for(u32 x=0; x<REGS; x++){
+            if(file.regs[x].fpOff == FREE_REG && file.regs[x].fpOff == CONST_IN_REG){
+                memReg = x;
+                break;
+            };    
+        };
+        if(memReg == INVALID_REG){
+            memReg = reg + 1;
+            if(reg == REGS) memReg = reg - 1;
+            store(memReg, file);
+        };
+        file.write("la x%d, %.*s\n%s x%d, 0(x%d)", memReg+START_FREE_REG, regi.globalName.len, regi.globalName.mem, (regi.dw)?"sd":"sw", reg+START_FREE_REG, memReg+START_FREE_REG);
+    }else{
+        file.write("%s x%d, %d(x5)", regi.dw?"sd":"sw", reg+START_FREE_REG, regi.fpOff);
+    };
+    file.regs[reg].fpOff = FREE_REG;
 };
-inline void setRegister(u32 reg, u32 fpOff, u32 gen, bool dw, ASMFile &file){
+inline void setRegister(u32 reg, u32 gen, String globalName, VarInfo info, ASMFile &file){
     Register &regist = file.regs[reg];
     regist.gen = gen;
-    regist.fpOff = fpOff;
-    regist.dw = dw;
+    regist.fpOff = info.fpOff;
+    regist.dw = info.dw;
+    regist.globalName = globalName;
 };
 u32 getOrCreateFreeRegister(ASMFile &file){
     u32 curGen = file.areas.count;
     for(u32 x=0; x<REGS; x++){
-        if(file.regs[x].fpOff == -1){return x;};
+        if(file.regs[x].fpOff == FREE_REG){return x;};
     };
     for(u32 x=0; x<REGS; x++){
         if(file.regs[x].gen < curGen){
@@ -119,44 +146,57 @@ u32 getOrCreateFreeRegister(ASMFile &file){
     store(0, file);
     return 0;
 };
-VarInfo getVarInfo(String &name, ASMFile &file, u32 *offset=nullptr, u32 *generation=nullptr){
+VarInfo getVarInfo(String &name, ASMFile &file, u32 *generation = nullptr){
     u32 curGen = file.areas.count;
-    u32 off;
     u32 gen = curGen;
     while(gen>0){
-        if(file.areas[--gen].varToOff.getValue(name, &off)) break;
+        u32 off;
+        if(file.areas[--gen].varToOff.getValue(name, &off)){
+            if(generation) *generation = gen;
+            return file.areas[gen].infos[off];
+        };
     };
-    if(offset) *offset = off;
-    if(generation) *generation = gen;
-    //TODO: globals
-    return file.areas[gen].infos[off];
+    if(generation) *generation = 0;
+    u32 off;
+    globalToOff.getValue(name, &off);
+    return globalInfos[off];
 };
 u32 getOrLoadToRegister(String &name, ASMFile &file){
-    u32 off, gen;
-    VarInfo info = getVarInfo(name, file, &off, &gen);
+    u32 gen;
+    VarInfo info = getVarInfo(name, file, &gen);
     for(u32 x=0; x<REGS; x++){
         if(file.regs[x].gen == gen && file.regs[x].fpOff == info.fpOff){
             return x;
         };
     };
+    u32 freeReg = INVALID_REG;
     for(u32 x=0; x<REGS; x++){
-        if(file.regs[x].fpOff == FREE_REG || file.regs[x].fpOff == CONST_IN_REG){
-            file.write("%s x%d, %d(x5)", info.dw?"ld":"lw", x+START_FREE_REG, info.fpOff);
-            setRegister(x, info.fpOff, gen, info.dw, file);
-            return x;
+        if(file.regs[x].fpOff == FREE_REG){
+            freeReg = x;
+            break;
         };
     };
-    const u32 curGen = file.areas.count - 1;
-    for(u32 x=0; x<REGS; x++){
-        if(file.regs[x].gen < curGen){
-            store(x, file);
-            setRegister(x, info.fpOff, gen, info.dw, file);
-            return x;
+    if(freeReg == INVALID_REG){
+        const u32 curGen = file.areas.count - 1;
+        for(u32 x=0; x<REGS; x++){
+            if(file.regs[x].gen < curGen){
+                freeReg = x;
+                break;
+            };
         };
     };
-    store(0, file);
-    setRegister(0, info.fpOff, gen, info.dw, file);
-    return 0;
+    if(freeReg == INVALID_REG){
+        store(0, file);
+        freeReg = 0;
+    };
+    if(info.fpOff != GLOBAL_IN_REG){
+        file.write("%s x%d, %d(x5)", info.dw?"ld":"lw", freeReg+START_FREE_REG, info.fpOff);
+        setRegister(freeReg, gen, name, info, file);
+        return freeReg;
+    };
+    file.write("la x%d, %.*s\n%s x%d, 0(x%d)", freeReg+START_FREE_REG, name.len, name.mem, info.dw?"ld":"lw", freeReg+START_FREE_REG, freeReg+START_FREE_REG);
+    setRegister(freeReg, gen, name, info, file);
+    return freeReg;
 };
 u32 lowerExpression(ASTBase *node, ASMFile &file){
     switch(node->type){
@@ -167,7 +207,9 @@ u32 lowerExpression(ASTBase *node, ASMFile &file){
             */
             ASTNum *num = (ASTNum*)node;
             u32 reg = getOrCreateFreeRegister(file);
-            setRegister(reg, CONST_IN_REG, file.areas.count-1, false, file);  //FIXME: not always false
+            bool dw = false;
+            if(num->integer > 2147483647) dw = true;
+            setRegister(reg, file.areas.count-1, {nullptr, NULL}, {CONST_IN_REG, dw}, file);
             file.write("li x%d, %lld", reg+START_FREE_REG, num->integer);
             return reg;
         }break;
@@ -252,7 +294,7 @@ void lowerASTNode(ASTBase *node, ASMFile &file){
                         stackAbove += var->entity->size;
                         info.fpOff = stackAbove;
                         info.dw = false;
-                        setRegister(procArgRegisterCount, info.fpOff, file.areas.count-1, false, file);
+                        setRegister(procArgRegisterCount, file.areas.count-1, {nullptr, NULL}, {info.fpOff, false}, file);
                         procArgRegisterCount++;
                     };
                 };
@@ -320,10 +362,15 @@ void lowerToRISCV(char *outputPath, DynamicArray<ASTBase*> &globals){
         };
         i++;
     };
+    globalToOff.init();
+    globalInfos.init();
     for(u32 x=0; x<globals.count; x++){
         ASTAssDecl *assdecl = (ASTAssDecl*)globals[x];
         ASTVariable *var = (ASTVariable*)assdecl->lhs[0];
         int temp;
+        globalToOff.insertValue(var->name, globalInfos.count);
+        VarInfo &info = globalInfos.newElem();
+        info.fpOff = GLOBAL_IN_REG;
 GLOBAL_WRITE_ASM_TO_BUFF:
         switch(assdecl->rhs->type){
             case ASTType::STRING:{
@@ -331,16 +378,19 @@ GLOBAL_WRITE_ASM_TO_BUFF:
                 u32 off;
                 stringToId.getValue(str->str, &off);
                 temp = snprintf(buff+cursor, BUFF_SIZE-cursor, "%.*s: .dword _S%d\n", var->name.len, var->name.mem, off);
+                info.dw = true;
             }break;
             case ASTType::CHARACTER:{
                 ASTNum *num = (ASTNum*)assdecl->rhs;
                 temp = snprintf(buff+cursor, BUFF_SIZE-cursor, ".%.*s: .byte %d\n", var->name.len, var->name.mem, (u8)num->integer);
+                info.dw = false;
             }break;
             case ASTType::INTEGER:{
                 ASTNum *num = (ASTNum*)assdecl->rhs;
                 bool dw = false;
                 if(var->entity->size > 32 || var->entity->pointerDepth > 0) dw = true;
                 temp = snprintf(buff+cursor, BUFF_SIZE-cursor, ".%.*s: .%s %lld\n", var->name.len, var->name.mem, dw?"dword":"word", num->integer);
+                info.dw = dw;
             }break;
         };
         if(temp + cursor >= BUFF_SIZE){
@@ -361,6 +411,7 @@ GLOBAL_WRITE_ASM_TO_BUFF:
         ASMFile AsmFile;
         AsmFile.init();
         for(u32 x=0; x<astFile.nodes.count; x++) lowerASTNode(astFile.nodes[x], AsmFile);
+        for(u32 x=0; x<REGS; x++) store(x, AsmFile);
         ASMBucket *buc = AsmFile.start;
         AsmFile.uninit();
         while(buc){
