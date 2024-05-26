@@ -19,7 +19,7 @@
 
 #include "report.cc"
 #include "lexer.cc"
-#include "type.hh"
+#include "type.cc"
 #include "parser.cc"
 #include "checker.cc"
 

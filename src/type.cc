@@ -19,3 +19,7 @@ enum class Type{
     COMP_STRING,
     COUNT,
 };
+
+bool isNumber(Type type){
+    return type >= Type::S64 && type <= Type::COMP_INTEGER && type != Type::CHAR;
+}

@@ -97,6 +97,7 @@ struct ASTFor : ASTBase{
     ASTBase *end;
     ASTBase **body;
     u32 bodyCount;
+    u32 tokenOff;
 };
 struct ASTProcDefDecl : ASTBase{
     String name;
@@ -692,8 +693,8 @@ bool parseBlock(Lexer &lexer, ASTFile &file, DynamicArray<ASTBase*> &table, u32 
             x++;
         }break;
         case TokType::K_FOR:{
-            x++;
             ASTFor *For = (ASTFor*)file.newNode(sizeof(ASTFor), ASTType::FOR);
+            For->tokenOff = ++x;
             if(tokTypes[x+1] == (TokType)':'){
                 //c-for
                 For->iter = makeStringFromTokOff(x, lexer);
