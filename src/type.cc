@@ -20,6 +20,4 @@ enum class Type{
     COUNT,
 };
 
-bool isNumber(Type type){
-    return type >= Type::S64 && type <= Type::COMP_INTEGER && type != Type::CHAR;
-}
+bool isNumber(Type type) {return type >= Type::S64 && type <= Type::COMP_INTEGER && type != Type::CHAR;}

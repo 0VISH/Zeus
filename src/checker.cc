@@ -188,9 +188,7 @@ Type checkTree(Lexer &lexer, ASTBase *node, DynamicArray<Scope*> &scopes, u32 &p
         case ASTType::STRING:{
             u32 off;
             ASTString *str = (ASTString*)node;
-            if(!stringToId.getValue(str->str, &off)){
-                stringToId.insertValue(str->str, stringToId.count);
-            };
+            if(!stringToId.getValue(str->str, &off)) stringToId.insertValue(str->str, stringToId.count);
             return Type::COMP_STRING;
         }break;
         case ASTType::VARIABLE:{
@@ -373,7 +371,7 @@ bool checkASTNode(Lexer &lexer, ASTBase *node, DynamicArray<Scope*> &scopes){
             };
             scopes.push(body);
             for(u32 x=0; x<For->bodyCount; x++){
-                    if(!checkASTNode(lexer, For->body[x], scopes)) return false;
+                if(!checkASTNode(lexer, For->body[x], scopes)) return false;
             };
             scopes.pop();
         }break;
@@ -541,9 +539,7 @@ bool checkASTFile(Lexer &lexer, ASTFile &file, Scope &scope, DynamicArray<ASTBas
     DynamicArray<Scope*> scopes;
     scopes.init();
     DEFER(scopes.uninit());
-    for(u32 x=0; x<file.dependencies.count; x++){
-        scopes.push(&globalScopes[file.dependencies[x]]);
-    };
+    for(u32 x=0; x<file.dependencies.count; x++) scopes.push(&globalScopes[file.dependencies[x]]);
     scopes.push(&scope);
     for(u32 x=0; x<file.nodes.count; x++){
         if(!checkASTNode(lexer, file.nodes[x], scopes)) return false;

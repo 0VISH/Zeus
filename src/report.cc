@@ -60,9 +60,7 @@ namespace report{
 					if (mem[i] == '\n') { line += 1; };
 				};
 #endif
-				while (mem[offset-off] != '\n') {
-					off += 1;
-				};
+				while (mem[offset-off] != '\n') off += 1;
 				char *beg = mem + offset-off+1;
 				x = 0;
 				while (beg[x] != '\n' && beg[x] != '\0') {
@@ -87,13 +85,9 @@ namespace report{
 #endif
 				printf(" %s\n", rep.msg);
 				printf("  %d| ", line);
-				if(printDots){
-				printf("...");
-				};
+				if(printDots) printf("...");
 				printf("%s\n____", beg);
-				if(printDots){
-				printf("___");
-				}
+				if(printDots) printf("___");
 				u32 n = line;
 				while (n > 0) {
 				printf("_");

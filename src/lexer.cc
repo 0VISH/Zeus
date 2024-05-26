@@ -106,8 +106,8 @@ u32 eatUnwantedChars(char *mem, u32 x){
     };
     return x;
 };
-b32 isAlpha(char x) { return (x >= 'a' && x <= 'z') || (x >= 'A' && x <= 'Z'); };
-b32 isNum(char x) { return (x >= '0' && x <= '9'); };
+b32 isAlpha(char x){return (x >= 'a' && x <= 'z') || (x >= 'A' && x <= 'Z');};
+b32 isNum(char x){return (x >= '0' && x <= '9');};
 struct Lexer {
     DynamicArray<TokenOffset> tokenOffsets;
     DynamicArray<TokType> tokenTypes;
@@ -120,7 +120,7 @@ struct Lexer {
         u32 len = GetFullPathNameA(fn, 1024, tempBuff, NULL);
 #elif(LIN)
         char *fullpath = realpath(fn, tempBuff);
-        if(fullpath == nullptr){return 0;};
+        if(fullpath == nullptr) return 0;
         u32 len = strlen(fullpath);
 #endif
         FILE *fp = fopen(tempBuff, "r");
@@ -233,14 +233,14 @@ struct Lexer {
                 TokType numType = TokType::INTEGER;
             CHECK_NUM_DEC:
                 x += 1;
-                while (isNum(src[x]) || src[x] == '_') { x += 1; };
-                if (src[x] == '.' && src[x+1] != '.') {
-                if (numType == TokType::DECIMAL) {
-                    emitErr(start, "Decimal cannot have 2 decimals");
-                    return false;
-                };
-                numType = TokType::DECIMAL;
-                goto CHECK_NUM_DEC;
+                while(isNum(src[x]) || src[x] == '_') x += 1;
+                if(src[x] == '.' && src[x+1] != '.'){
+                    if(numType == TokType::DECIMAL){
+                        emitErr(start, "Decimal cannot have 2 decimals");
+                        return false;
+                    };
+                    numType = TokType::DECIMAL;
+                    goto CHECK_NUM_DEC;
                 };
                 TokenOffset offset;
                 offset.off = start;
@@ -327,15 +327,12 @@ struct Lexer {
                             y += 1;
                             switch (src[x]) {
                             case '\0': {
-                                if(level == 0){
-                                    CLEAR_BIT(mask, y);
-                                }else{
+                                if(level == 0) CLEAR_BIT(mask, y);
+                                else{
                                     if(level < 0){
                                         level *= -1;
                                         emitErr(beg, "%d multi line comment%snot started", level, (level==1)?" ":"s ");
-                                    }else{
-                                        emitErr(beg, "%d multi line comment%snot terminated", level, (level==1)?" ":"s ");
-                                    };
+                                    }else emitErr(beg, "%d multi line comment%snot terminated", level, (level==1)?" ":"s ");
                                     return false;
                                 };
                             } break;
@@ -365,9 +362,7 @@ struct Lexer {
                             if(level < 0){
                                 level *= -1;
                                 emitErr(beg, "%d multi line comment%snot started", level, (level==1)?" ":"s ");
-                            }else{
-                                emitErr(beg, "%d multi line comment%snot terminated", level, (level==1)?" ":"s ");
-                            };
+                            }else emitErr(beg, "%d multi line comment%snot terminated", level, (level==1)?" ":"s ");
                             return false;
                         } break;
                         case '*': {

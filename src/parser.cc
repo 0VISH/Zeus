@@ -221,8 +221,7 @@ s64 string2int(const String &str){
         char c = str[x];
         switch(c){
         case '.':
-        case '_':
-            continue;
+        case '_': continue;
         };
         num += (c - '0') * pow(10, len-y-1);
         y += 1;
@@ -304,9 +303,7 @@ ASTBase *genVariable(Lexer &lexer, ASTFile &file, u32 &xArg){
                 x += 2;
                 if(childWriteLoc){*childWriteLoc = arrayAt;};
                 childWriteLoc = &arrayAt->child;
-            }else{
-                if(childWriteLoc){*childWriteLoc = var;};
-            };
+            }else if(childWriteLoc) *childWriteLoc = var;
             if(root == nullptr){root = var;};
         };
     };
@@ -671,12 +668,9 @@ bool parseBlock(Lexer &lexer, ASTFile &file, DynamicArray<ASTBase*> &table, u32 
                 lexer.emitErr(tokOffs[x].off, "Expected a '='");
                 return false;
             };
-            if(tokTypes[++x] == TokType::INTEGER){
-                pStackSize = (f32)string2int(makeStringFromTokOff(x, lexer));
-            }
-            else if(tokTypes[x] == TokType::DECIMAL){
-                pStackSize = (f32)string2float(makeStringFromTokOff(x, lexer));
-            }else{
+            if(tokTypes[++x] == TokType::INTEGER) pStackSize = (f32)string2int(makeStringFromTokOff(x, lexer));
+            else if(tokTypes[x] == TokType::DECIMAL) pStackSize = (f32)string2float(makeStringFromTokOff(x, lexer));
+            else{
                 lexer.emitErr(tokOffs[x].off, "Expected an integer or a decimal");
                 return false;
             };

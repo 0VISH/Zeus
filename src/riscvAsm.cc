@@ -120,9 +120,8 @@ inline void store(u32 reg, ASMFile &file){
             store(memReg, file);
         };
         file.write("la x%d, %.*s\n%s x%d, 0(x%d)", memReg+START_FREE_REG, regi.globalName.len, regi.globalName.mem, (regi.dw)?"sd":"sw", reg+START_FREE_REG, memReg+START_FREE_REG);
-    }else{
-        file.write("%s x%d, %d(x5)", regi.dw?"sd":"sw", reg+START_FREE_REG, regi.fpOff);
-    };
+        file.regs[memReg].fpOff = FREE_REG;
+    }else file.write("%s x%d, %d(x5)", regi.dw?"sd":"sw", reg+START_FREE_REG, regi.fpOff);
     file.regs[reg].fpOff = FREE_REG;
 };
 inline void setRegister(u32 reg, u32 gen, String globalName, VarInfo info, ASMFile &file){
@@ -135,7 +134,7 @@ inline void setRegister(u32 reg, u32 gen, String globalName, VarInfo info, ASMFi
 u32 getOrCreateFreeRegister(ASMFile &file){
     u32 curGen = file.areas.count;
     for(u32 x=0; x<REGS; x++){
-        if(file.regs[x].fpOff == FREE_REG){return x;};
+        if(file.regs[x].fpOff == FREE_REG) return x;
     };
     for(u32 x=0; x<REGS; x++){
         if(file.regs[x].gen < curGen){
@@ -165,9 +164,7 @@ u32 getOrLoadToRegister(String &name, ASMFile &file){
     u32 gen;
     VarInfo info = getVarInfo(name, file, &gen);
     for(u32 x=0; x<REGS; x++){
-        if(file.regs[x].gen == gen && file.regs[x].fpOff == info.fpOff){
-            return x;
-        };
+        if(file.regs[x].gen == gen && file.regs[x].fpOff == info.fpOff) return x;
     };
     u32 freeReg = INVALID_REG;
     for(u32 x=0; x<REGS; x++){
@@ -299,13 +296,9 @@ void lowerASTNode(ASTBase *node, ASMFile &file){
                     };
                 };
             };
-            for(u32 x=0; x<proc->bodyCount; x++){
-                lowerASTNode(proc->body[x], file);
-            };
+            for(u32 x=0; x<proc->bodyCount; x++) lowerASTNode(proc->body[x], file);
             file.areas.pop();
-            if(stackSize != 0){
-                file.write("li x6, %d\nadd sp, sp, x6", stackSize);
-            };
+            if(stackSize != 0) file.write("li x6, %d\nadd sp, sp, x6", stackSize);
         }break;
         case ASTType::DECLERATION:{
             ASTAssDecl *decl = (ASTAssDecl*)node;
