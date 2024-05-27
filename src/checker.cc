@@ -175,21 +175,26 @@ static HashmapStr stringToId;
 Type checkTree(Lexer &lexer, ASTBase *node, DynamicArray<Scope*> &scopes, u32 &pointerDepth){
     BRING_TOKENS_TO_SCOPE;
     pointerDepth = 0;
+    ASTType unOpType = ASTType::INVALID;
+    u32 unOpTokenOff;
     while(node->type > ASTType::U_START && node->type < ASTType::U_END){
         //unary ops return the type of the child
         ASTUnOp *unOp = (ASTUnOp*)node;
+        unOpType = unOp->type;
+        unOpTokenOff = unOp->tokenOff;
         node = unOp->child;
     };
+    Type type = Type::INVALID;
     switch(node->type){
-        case ASTType::CHARACTER: return Type::CHAR;
-        case ASTType::BOOL:      return Type::BOOL;
-        case ASTType::INTEGER:   return Type::COMP_INTEGER;
-        case ASTType::DECIMAL:   return Type::COMP_DECIMAL;
+        case ASTType::CHARACTER: type = Type::CHAR;break;
+        case ASTType::BOOL:      type = Type::BOOL;break;
+        case ASTType::INTEGER:   type = Type::COMP_INTEGER;break;
+        case ASTType::DECIMAL:   type = Type::COMP_DECIMAL;break;
         case ASTType::STRING:{
             u32 off;
             ASTString *str = (ASTString*)node;
             if(!stringToId.getValue(str->str, &off)) stringToId.insertValue(str->str, stringToId.count);
-            return Type::COMP_STRING;
+            type = Type::COMP_STRING;
         }break;
         case ASTType::VARIABLE:{
             VariableEntity *entity = getVariableEntity(node, scopes);
@@ -198,8 +203,8 @@ Type checkTree(Lexer &lexer, ASTBase *node, DynamicArray<Scope*> &scopes, u32 &p
                 lexer.emitErr(tokOffs[var->tokenOff].off, "Variable not defined");
                 return Type::INVALID;
             };
-            pointerDepth = entity->pointerDepth;
-            return entity->type;
+            pointerDepth = (pointerDepth>entity->pointerDepth)?pointerDepth:entity->pointerDepth;
+            type = entity->type;
         }break;
         case ASTType::MODIFIER:{
             ASTModifier *mod = (ASTModifier*)node;
@@ -208,7 +213,7 @@ Type checkTree(Lexer &lexer, ASTBase *node, DynamicArray<Scope*> &scopes, u32 &p
                 lexer.emitErr(tokOffs[mod->tokenOff].off, "Variable not defined");
                 return Type::INVALID;
             };
-            return checkModifierChain(lexer, mod->child, entity);
+            type = checkModifierChain(lexer, mod->child, entity);
         }break;
         default:{
             if(node->type > ASTType::B_START && node->type < ASTType::B_END){
@@ -224,11 +229,39 @@ Type checkTree(Lexer &lexer, ASTBase *node, DynamicArray<Scope*> &scopes, u32 &p
                     lexer.emitErr(tokOffs[binOp->tokenOff].off, "Cannot perform binary operation with structures");
                     return Type::INVALID;
                 };
-                return (lhsType < rhsType)?lhsType:rhsType;
+                type = (lhsType < rhsType)?lhsType:rhsType;
             };
         }break;
     };
-    return Type::INVALID;
+    switch(unOpType){
+        case ASTType::U_MEM:{
+            if(pointerDepth == 0) pointerDepth = 1;
+            switch(node->type){
+                case ASTType::CHARACTER:
+                case ASTType::BOOL:
+                case ASTType::INTEGER:
+                case ASTType::DECIMAL:
+                    lexer.emitErr(tokOffs[unOpTokenOff+1].off, "Cannot '&' on this");
+                    return Type::INVALID;
+            };
+        }break;
+        case ASTType::U_NOT:{
+            switch(type){
+                case Type::CHAR:
+                    lexer.emitErr(tokOffs[unOpTokenOff+1].off, "Cannot '!' on this");
+                    return Type::INVALID;
+            };
+        }break;
+        case ASTType::U_NEG:{
+            switch(type){
+                case Type::CHAR:
+                case Type::BOOL:
+                    lexer.emitErr(tokOffs[unOpTokenOff+1].off, "Cannot '-' on this");
+                    return Type::INVALID;
+            };
+        }break;
+    };
+    return type;
 };
 u64 checkDecl(Lexer &lexer, ASTAssDecl *assdecl, DynamicArray<Scope*> &scopes){
     BRING_TOKENS_TO_SCOPE;

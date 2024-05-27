@@ -2,6 +2,7 @@
 #define BRING_TOKENS_TO_SCOPE DynamicArray<TokType> &tokTypes = lexer.tokenTypes;DynamicArray<TokenOffset> &tokOffs = lexer.tokenOffsets;
 
 enum class ASTType{
+    INVALID,
     DECLERATION,
     ASSIGNMENT,
     INTEGER,
@@ -36,6 +37,7 @@ enum class ASTType{
     U_START,  //unary operators start
     U_NOT,
     U_NEG,
+    U_MEM,
     U_END,    //unary operators end
 };
 
@@ -350,12 +352,21 @@ ASTBase* _genASTExprTree(Lexer &lexer, ASTFile &file, u32 &xArg, u8 &bracketArg)
     };
     ASTUnOp *unOp = nullptr;
     //build unary operator
+    ASTType unaryType = ASTType::INVALID;
     switch(tokTypes[x]){
         case (TokType)'-':
-        case (TokType)'!':{
-            unOp = (ASTUnOp*)file.newNode(sizeof(ASTUnOp), (tokTypes[x] == (TokType)'-')?ASTType::U_NEG:ASTType::U_NOT);
-            unOp->tokenOff = x++;
-        }break;
+            unaryType = ASTType::U_NEG;
+            break;
+        case (TokType)'!':
+            unaryType = ASTType::U_NOT;
+            break;
+        case (TokType)'&':
+            unaryType = ASTType::U_MEM;
+            break;
+    };
+    if(unaryType != ASTType::INVALID){
+        unOp = (ASTUnOp*)file.newNode(sizeof(ASTUnOp), unaryType);
+        unOp->tokenOff = x++;
     };
     //build operand
     ASTBase *lhs;
@@ -941,7 +952,8 @@ namespace dbg{
         PLOG("type: ");
         bool hasNotDumped = true;
         switch(node->type){
-            case ASTType::U_NEG: printf("u_neg"); hasNotDumped = false;
+            case ASTType::U_MEM: printf("u_not"); hasNotDumped = false;
+            case ASTType::U_NEG: if(hasNotDumped){printf("u_neg"); hasNotDumped = false;};
             case ASTType::U_NOT:{
                 if(hasNotDumped) printf("u_not");
                 PLOG("child:");
