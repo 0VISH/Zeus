@@ -342,7 +342,7 @@ void lowerToRISCV(char *outputPath, DynamicArray<ASTBase*> &globals){
 #endif
     const u32 BUFF_SIZE = 1024;
     char buff[BUFF_SIZE];
-    char *start = ".section data\n";
+    char *start = ".section .data\n";
     u32 cursor = snprintf(buff, BUFF_SIZE, "%s", start);
     for(u32 x=0,i=0; x<stringToId.count;){
         if(stringToId.status[i]){
@@ -398,7 +398,7 @@ GLOBAL_WRITE_ASM_TO_BUFF:
         cursor += temp;
     };
     if(cursor) WRITE(file, buff, cursor);
-    char *textSection = "\n.section text\n";
+    char *textSection = "\n.section .text\n";
     WRITE(file, textSection, strlen(textSection));
     for(u32 x=linearDepEntities.count; x > 0;){
         x -= 1;
